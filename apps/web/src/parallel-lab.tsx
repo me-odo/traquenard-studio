@@ -80,6 +80,8 @@ export function ParallelLab() {
   const [selectedBranchId, setSelectedBranchId] = useState<string>();
   const [focusedBranchId, setFocusedBranchId] = useState<string>();
   const selectedBranch = branches.find((branch) => branch.id === selectedBranchId);
+  const focusedBranch =
+    viewport === 'mobile' ? branches.find((branch) => branch.id === focusedBranchId) : undefined;
   const context = useMemo(() => parallelContext(fixture.definition), [fixture]);
   const currentVariant = variants.find((item) => item.key === variant)!;
 
@@ -119,8 +121,13 @@ export function ParallelLab() {
     setBranches(insertBranchOperation(branches, selectedBranchId, kind));
   };
 
+  const showMobileOverview = () => {
+    setFocusedBranchId(undefined);
+    setSelectedBranchId(undefined);
+    setSelectedParallel(true);
+  };
+
   const reset = () => chooseFixture(fixtureKey);
-  const mobileFocus = viewport === 'mobile' && focusedBranchId;
 
   return (
     <main className="parallel-lab">
@@ -183,7 +190,8 @@ export function ParallelLab() {
               aria-pressed={viewport === item}
               onClick={() => {
                 setViewport(item);
-                if (item === 'desktop') setFocusedBranchId(undefined);
+                setFocusedBranchId(undefined);
+                if (item === 'mobile') setSelectedBranchId(undefined);
               }}
             >
               {item === 'desktop' ? '▰ Desktop' : '▯ Mobile'}
@@ -221,11 +229,11 @@ export function ParallelLab() {
           <i />
         </div>
         <div className="prototype-canvas">
-          {mobileFocus ? (
+          {focusedBranch ? (
             <MobileBranchEditor
-              branch={branches.find((item) => item.id === focusedBranchId)!}
-              branchIndex={branches.findIndex((item) => item.id === focusedBranchId)}
-              onBack={() => setFocusedBranchId(undefined)}
+              branch={focusedBranch}
+              branchIndex={branches.indexOf(focusedBranch)}
+              onBack={showMobileOverview}
               onInsert={insertOperation}
               onRemove={deleteSelectedBranch}
               canRemove={branches.length > 1}
@@ -273,7 +281,7 @@ export function ParallelLab() {
         </div>
       </section>
 
-      {!mobileFocus && (
+      {viewport === 'desktop' && (
         <section className="authoring-tray" aria-label="Parallel authoring actions">
           <div className="tray-heading">
             <div>

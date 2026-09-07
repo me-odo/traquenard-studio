@@ -45,11 +45,12 @@ test('parallel lab supports mobile tap insertion and branch removal without chan
 }) => {
   await page.goto('/lab/parallel');
   await page.getByRole('button', { name: 'Mobile' }).click();
-  await page
-    .getByRole('region', { name: 'Parallel authoring actions' })
-    .getByRole('button', { name: /Add branch/ })
-    .click();
+  const prototype = page.getByRole('region', { name: 'Parallel lanes prototype' });
+  await prototype.getByRole('button', { name: /Add lane/ }).click();
 
+  const focusedEditor = prototype.getByRole('region', { name: 'Focused editor for branch 4' });
+  await expect(focusedEditor).toBeVisible();
+  await expect(prototype.getByText('Start the round together.')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Empty branch' })).toBeVisible();
   await page.getByRole('button', { name: /Logical timer/ }).click();
   await expect(page.getByRole('heading', { name: 'Logical timer' })).toBeVisible();
@@ -57,9 +58,15 @@ test('parallel lab supports mobile tap insertion and branch removal without chan
   await expect(page.getByText('4 in working projection')).toBeVisible();
 
   await page.getByRole('button', { name: 'Parallel overview' }).click();
+  await expect(focusedEditor).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'Parallel authoring actions' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Logical timer/ })).toHaveCount(0);
+  await expect(prototype.getByText('Start the round together.')).toBeVisible();
   await expect(page.getByText('Branch 4 · System · logical time')).toBeVisible();
-  await page.getByRole('button', { name: 'Editing branch 4' }).click();
+  await page.getByRole('button', { name: 'Edit branch 4' }).click();
+  await expect(focusedEditor).toBeVisible();
   await page.getByRole('button', { name: 'Remove this branch' }).click();
+  await expect(focusedEditor).toHaveCount(0);
   await expect(page.getByText('3 in working projection')).toBeVisible();
   await expect(page.getByText('Branch 4 · System · logical time')).not.toBeVisible();
 });
