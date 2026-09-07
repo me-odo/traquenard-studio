@@ -9,6 +9,7 @@ import {
   type DraftBlock,
   type GameDraft,
 } from '@traquenard/authoring-domain';
+import { ParallelLab } from './parallel-lab.js';
 import './styles.css';
 
 interface ApiEvent {
@@ -18,6 +19,7 @@ interface ApiEvent {
 }
 
 function App() {
+  if (window.location.pathname === '/lab/parallel') return <ParallelLab />;
   return window.location.pathname === '/lab' ? <VisualLab /> : <Studio />;
 }
 
@@ -255,6 +257,11 @@ function VisualLab() {
         <a href="/">← Studio</a>
       </header>
       <p>Components render predetermined runtime results; they never choose business outcomes.</p>
+      <a className="experiment-link" href="/lab/parallel">
+        <span className="eyebrow">AUTHORING EXPERIMENT · ISSUE #1</span>
+        <strong>Compare parallel execution grammars</strong>
+        <small>Lanes, fork/join, and grouped cards across four semantic fixtures →</small>
+      </a>
       <section className="lab-grid">
         <article>
           <h2>Controlled die</h2>
