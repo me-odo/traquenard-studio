@@ -70,3 +70,62 @@ test('parallel lab supports mobile tap insertion and branch removal without chan
   await expect(page.getByText('3 in working projection')).toBeVisible();
   await expect(page.getByText('Branch 4 · System · logical time')).not.toBeVisible();
 });
+
+test('references lab selects between same-type decks, traces the source, and enters a Composite', async ({
+  page,
+}) => {
+  await page.goto('/lab/references');
+  await page.getByRole('button', { name: 'A · Two decks' }).click();
+  await page.getByRole('button', { name: 'Chips + navigation' }).click();
+
+  const prototype = page.getByRole('region', {
+    name: 'Chips + navigation reference prototype',
+  });
+  await prototype.getByRole('button', { name: /FROM change/ }).click();
+  const questions = prototype.getByRole('button', { name: /Questions Deck.*Compatible/ });
+  const challenges = prototype.getByRole('button', { name: /Challenges Deck.*Compatible/ });
+  await expect(questions).toBeEnabled();
+  await expect(challenges).toBeEnabled();
+  await challenges.click();
+  await expect(prototype.getByRole('heading', { name: 'Challenges Deck' })).toBeVisible();
+  await prototype.getByRole('button', { name: 'Go to source' }).click();
+  await expect(prototype.locator('#ref-node-game-values')).toHaveClass(/source-focused/);
+  await prototype.getByRole('button', { name: 'Back' }).click();
+
+  await page.getByRole('button', { name: 'D · Composite' }).click();
+  await prototype.getByRole('button', { name: 'Open Prepare Turn →' }).click();
+  await expect(prototype.getByText('Focused Composite')).toBeVisible();
+  await expect(prototype.getByRole('heading', { name: 'Prepare Turn' })).toBeVisible();
+  await prototype.getByRole('button', { name: 'Back' }).click();
+  await expect(prototype.getByText('Parent flow')).toBeVisible();
+  await expect(prototype.getByRole('button', { name: 'Open Prepare Turn →' })).toBeVisible();
+});
+
+test('references lab preserves mobile Composite context across source navigation', async ({
+  page,
+}) => {
+  await page.goto('/lab/references');
+  await page.getByRole('button', { name: 'D · Composite' }).click();
+  await page.getByRole('button', { name: 'Chips + navigation' }).click();
+  await page.getByRole('button', { name: 'Mobile' }).click();
+
+  const prototype = page.getByRole('region', {
+    name: 'Chips + navigation reference prototype',
+  });
+  await prototype.getByRole('button', { name: 'Open Prepare Turn →' }).click();
+  const breadcrumb = prototype.getByRole('navigation', { name: 'Semantic location' });
+  await expect(breadcrumb.getByText('Prepare Turn', { exact: true })).toBeVisible();
+  await prototype
+    .getByRole('button', { name: /INPUT · deck.*From parent: Questions Deck/ })
+    .click();
+  await expect(prototype.getByText('FROM PARENT SCOPE')).toBeVisible();
+  await prototype.getByRole('button', { name: 'Go to source' }).click();
+  await expect(prototype.getByRole('button', { name: 'Open Prepare Turn →' })).toBeVisible();
+  await expect(prototype.locator('#ref-node-game-values')).toHaveClass(/source-focused/);
+
+  await prototype.getByRole('button', { name: 'Back' }).click();
+  await expect(breadcrumb.getByText('Prepare Turn', { exact: true })).toBeVisible();
+  await expect(prototype.getByText('From parent: Questions Deck')).toBeVisible();
+  await prototype.getByRole('button', { name: 'Back' }).click();
+  await expect(prototype.getByRole('button', { name: 'Open Prepare Turn →' })).toBeVisible();
+});

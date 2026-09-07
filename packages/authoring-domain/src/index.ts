@@ -62,7 +62,20 @@ export interface ValueReference {
   readonly id: string;
   readonly type: TypeRef;
   readonly source:
-    { readonly kind: 'runtime' } | { readonly kind: 'block'; readonly blockId: string };
+    | { readonly kind: 'runtime' }
+    | { readonly kind: 'variable'; readonly variableName: string }
+    | { readonly kind: 'block'; readonly blockId: string }
+    | {
+        readonly kind: 'composite-port';
+        readonly compositeId: string;
+        readonly direction: 'input' | 'output';
+      };
+}
+
+export interface ReferenceCompatibility {
+  readonly reference: ValueReference;
+  readonly compatible: boolean;
+  readonly reason?: string;
 }
 
 export interface InsertionSlot {
@@ -173,6 +186,38 @@ export function compatibilityAtSlot(
         candidates,
         reason: `No ${showType(missing[0]!.type)} value is available for input '${missing[0]!.name}'.`,
       };
+}
+
+/**
+ * Presentation-neutral compatibility for choosing a value at a typed input.
+ * Consumers may show incompatible values for explanation, but must not select them.
+ */
+export function referenceCompatibility(
+  references: readonly ValueReference[],
+  expectedType: TypeRef,
+): readonly ReferenceCompatibility[] {
+  return references.map((reference) =>
+    sameType(reference.type, expectedType)
+      ? { reference, compatible: true }
+      : {
+          reference,
+          compatible: false,
+          reason: `Expected ${showType(expectedType)}, received ${showType(reference.type)}.`,
+        },
+  );
+}
+
+export function compatibleValueReferences(
+  references: readonly ValueReference[],
+  expectedType: TypeRef,
+): readonly ValueReference[] {
+  return referenceCompatibility(references, expectedType)
+    .filter((candidate) => candidate.compatible)
+    .map((candidate) => candidate.reference);
+}
+
+export function describeType(type: TypeRef): string {
+  return showType(type);
 }
 
 export function appendBlock(draft: GameDraft, kind: DraftBlock['kind'], id: string): GameDraft {

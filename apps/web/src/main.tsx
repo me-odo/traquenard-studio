@@ -10,6 +10,7 @@ import {
   type GameDraft,
 } from '@traquenard/authoring-domain';
 import { ParallelLab } from './parallel-lab.js';
+import { ReferenceLab } from './reference-lab.js';
 import './styles.css';
 
 interface ApiEvent {
@@ -20,6 +21,7 @@ interface ApiEvent {
 
 function App() {
   if (window.location.pathname === '/lab/parallel') return <ParallelLab />;
+  if (window.location.pathname === '/lab/references') return <ReferenceLab />;
   return window.location.pathname === '/lab' ? <VisualLab /> : <Studio />;
 }
 
@@ -261,6 +263,11 @@ function VisualLab() {
         <span className="eyebrow">AUTHORING EXPERIMENT · ISSUE #1</span>
         <strong>Compare parallel execution grammars</strong>
         <small>Lanes, fork/join, and grouped cards across four semantic fixtures →</small>
+      </a>
+      <a className="experiment-link" href="/lab/references">
+        <span className="eyebrow">AUTHORING EXPERIMENT · ISSUE #2</span>
+        <strong>Trace typed references through nested flows</strong>
+        <small>Persistent cables, inline chips, and reversible semantic navigation →</small>
       </a>
       <section className="lab-grid">
         <article>

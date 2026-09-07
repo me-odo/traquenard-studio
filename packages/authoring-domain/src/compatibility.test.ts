@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { compatibilityAtSlot, insertionSlots, sequentialDraft, blockCatalog } from './index.js';
+import { t } from '@traquenard/game-ir';
+import {
+  blockCatalog,
+  compatibilityAtSlot,
+  compatibleValueReferences,
+  insertionSlots,
+  referenceCompatibility,
+  sequentialDraft,
+  type ValueReference,
+} from './index.js';
 
 describe('typed authoring compatibility', () => {
   it('derives compatible candidates from semantic Game IR types', () => {
@@ -23,5 +32,42 @@ describe('typed authoring compatibility', () => {
         expect.objectContaining({ id: 'selectedPlayer', type: { kind: 'participant' } }),
       ]),
     );
+  });
+});
+
+describe('reference compatibility', () => {
+  const references: readonly ValueReference[] = [
+    {
+      id: 'questionsDeck',
+      type: t.collection(t.card),
+      source: { kind: 'variable', variableName: 'questionsDeck' },
+    },
+    {
+      id: 'challengesDeck',
+      type: t.collection(t.card),
+      source: { kind: 'variable', variableName: 'challengesDeck' },
+    },
+    {
+      id: 'currentPlayer',
+      type: t.participant,
+      source: { kind: 'block', blockId: 'choose-player' },
+    },
+  ];
+
+  it('keeps same-type references individually identifiable', () => {
+    expect(
+      compatibleValueReferences(references, t.collection(t.card)).map((value) => value.id),
+    ).toEqual(['questionsDeck', 'challengesDeck']);
+  });
+
+  it('explains incompatible values without treating them as candidates', () => {
+    const player = referenceCompatibility(references, t.collection(t.card)).find(
+      (candidate) => candidate.reference.id === 'currentPlayer',
+    );
+    expect(player).toEqual({
+      reference: references[2],
+      compatible: false,
+      reason: 'Expected Collection<card>, received participant.',
+    });
   });
 });
