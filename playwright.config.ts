@@ -7,6 +7,10 @@ export default defineConfig({
   webServer: {
     command: 'pnpm dev',
     url: 'http://127.0.0.1:5173',
+    env: {
+      NODE_ENV: 'test',
+      TRAQUENARD_TEST_SEMANTIC_SEED: 'server-test:2',
+    },
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,
   },

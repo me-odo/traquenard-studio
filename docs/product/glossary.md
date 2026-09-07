@@ -6,7 +6,7 @@
 - **Game Draft:** mutable authoring data plus independent layout metadata.
 - **Game IR:** typed, versioned, serialized executable definition independent of UI and transport.
 - **Game Artifact:** immutable published IR version with pinned dependencies and content hash.
-- **Game Session:** authoritative execution of one artifact for participants and a seed.
+- **Game Session:** authoritative execution of one artifact for participants and a server-private semantic seed.
 - **Client Command:** retry-safe participant intent; never an outcome.
 - **System Input:** trusted ordered clock or connection lifecycle input recorded for deterministic replay, never accepted as a client command.
 - **Runtime Event:** authoritative semantic history used for replay and projections.

@@ -3,7 +3,7 @@ import { resolveAudience } from './audience.js';
 import { EngineError } from './errors.js';
 import { asCollection, evaluate } from './evaluator.js';
 import { randomIndex } from './rng.js';
-import { defaultValue, readVariable, setVariable } from './state.js';
+import { readVariable, setVariable } from './state.js';
 import type { EngineState, OperationFrame, PendingInput, SemanticEvent } from './types.js';
 
 export function advanceExecution(original: EngineState): {
@@ -116,7 +116,7 @@ export function advanceExecution(original: EngineState): {
         state = executeParallel(state, events, operation, frame);
         break;
       case 'time.wait': {
-        const dueAt = state.logicalTime + operation.durationMs;
+        const dueAt = checkedDueAt(state.logicalTime, operation.durationMs);
         state = {
           ...state,
           pending: {
@@ -165,7 +165,16 @@ export function advanceExecution(original: EngineState): {
         state = { ...state, completed: true, frames: [] };
         events.push({ kind: 'execution.completed', operationId: operation.id });
         break;
+      default:
+        assertNever(operation);
     }
+  }
+  if (!state.completed && state.frames.length === 0 && Object.keys(state.pending).length === 0) {
+    state = { ...state, completed: true };
+    events.push({
+      kind: 'execution.completed',
+      operationId: state.artifact.definition.root.id,
+    });
   }
   return { state, events };
 }
@@ -190,8 +199,14 @@ function executeParallel(
       });
     } else if (branch.kind === 'input.wait') {
       const participantId = evaluateFrame(branch.participant, state, frame);
-      if (typeof participantId !== 'string')
-        throw new EngineError('UNKNOWN_PARTICIPANT', 'Parallel input target is invalid.');
+      if (
+        typeof participantId !== 'string' ||
+        !state.participants.some((item) => item.id === participantId)
+      )
+        throw new EngineError(
+          'UNKNOWN_PARTICIPANT',
+          'Parallel input target is not a session participant.',
+        );
       state = {
         ...state,
         pending: {
@@ -215,7 +230,7 @@ function executeParallel(
         audience: { kind: 'participants', participantIds: [participantId] },
       });
     } else if (branch.kind === 'time.wait') {
-      const dueAt = state.logicalTime + branch.durationMs;
+      const dueAt = checkedDueAt(state.logicalTime, branch.durationMs);
       state = {
         ...state,
         pending: {
@@ -244,21 +259,30 @@ function invokeComposite(
   if (!composite)
     throw new EngineError('UNKNOWN_COMPOSITE', `Unknown composite '${operation.compositeId}'.`);
   const scopeId = `composite-${state.nextScopeId}`;
-  const scope: Record<string, Value> = {};
+  const values: Record<string, Value> = {};
   for (const input of composite.inputs)
-    scope[input.name] = evaluateFrame(operation.arguments[input.name]!, state, frame);
-  for (const output of composite.outputs) scope[output.name] = defaultValue(output.type);
+    values[input.name] = evaluateFrame(operation.arguments[input.name]!, state, frame);
   return {
     ...state,
     nextScopeId: state.nextScopeId + 1,
-    scopes: { ...state.scopes, [scopeId]: scope },
+    scopes: {
+      ...state.scopes,
+      [scopeId]: {
+        values,
+        outputNames: composite.outputs.map((output) => output.name),
+        assignedOutputNames: [],
+      },
+    },
     frames: [
       ...state.frames,
       {
         kind: 'composite.return',
         scopeId,
         ...(frame.scopeId ? { callerScopeId: frame.scopeId } : {}),
-        outputs: operation.outputs,
+        outputs: composite.outputs.map((output) => ({
+          port: output.name,
+          target: operation.outputs[output.name]!,
+        })),
       },
       operationFrame(composite.implementation, {}, scopeId),
     ],
@@ -272,8 +296,14 @@ function returnFromComposite(
   const scope = state.scopes[frame.scopeId];
   if (!scope) throw new EngineError('UNKNOWN_SCOPE', `Unknown composite scope '${frame.scopeId}'.`);
   let next = state;
-  for (const [port, target] of Object.entries(frame.outputs))
-    next = setVariable(next, target, scope[port]!, frame.callerScopeId);
+  for (const { port, target } of frame.outputs) {
+    if (!scope.assignedOutputNames.includes(port))
+      throw new EngineError(
+        'UNASSIGNED_COMPOSITE_OUTPUT',
+        `Composite output '${port}' was not assigned before return.`,
+      );
+    next = setVariable(next, target, scope.values[port]!, frame.callerScopeId);
+  }
   const { [frame.scopeId]: ignored, ...scopes } = next.scopes;
   void ignored;
   return { ...next, scopes };
@@ -309,4 +339,20 @@ function evaluateFrame(
   frame: OperationFrame,
 ): Value {
   return evaluate(expression, state, frame.locals, frame.scopeId);
+}
+
+function checkedDueAt(logicalTime: number, durationMs: number): number {
+  if (!Number.isSafeInteger(durationMs) || durationMs <= 0)
+    throw new EngineError('INVALID_TIME', 'Timer duration must be a positive safe integer.');
+  if (
+    !Number.isSafeInteger(logicalTime) ||
+    logicalTime < 0 ||
+    logicalTime > Number.MAX_SAFE_INTEGER - durationMs
+  )
+    throw new EngineError('TIME_OVERFLOW', 'Timer due time exceeds the safe integer domain.');
+  return logicalTime + durationMs;
+}
+
+function assertNever(value: never): never {
+  throw new EngineError('INVALID_ARTIFACT', `Unhandled operation: ${JSON.stringify(value)}`);
 }

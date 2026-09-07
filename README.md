@@ -38,6 +38,6 @@ During development, run targeted tests first and finish with local `pnpm verify`
 
 The server defaults to an in-memory repository for a zero-infrastructure loop. PostgreSQL is the durable adapter target and its initial migration lives in `apps/server/migrations`; set `DATABASE_URL` after starting infrastructure. Both adapters reject different content for an existing `(gameId, gameVersion)` and accept identical retries. Never use production data with `db:reset`.
 
-Disconnect/reconnect pause behavior and timer freezing currently exist at the pure runtime level and in deterministic tests. The WebSocket adapter does not yet translate real connection lifecycle into trusted system inputs, and the server does not yet run a logical-time scheduler; that integration is tracked in [issue #3](https://github.com/me-odo/traquernard-studio/issues/3).
+Disconnect/reconnect pause behavior and timer freezing currently exist at the pure runtime level and in deterministic tests. The WebSocket adapter does not yet translate real connection lifecycle into trusted system inputs, and the server does not yet run a logical-time scheduler; that integration is tracked in [issue #3](https://github.com/me-odo/traquenard-studio/issues/3).
 
 See [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`AGENTS.md`](AGENTS.md) before semantic changes.

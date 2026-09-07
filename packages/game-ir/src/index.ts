@@ -31,6 +31,7 @@ export type Expression =
 export type Audience =
   | { kind: 'everyone' }
   | { kind: 'host' }
+  | { kind: 'participant'; id: Expression }
   | { kind: 'participants'; ids: Expression }
   | { kind: 'team'; teamId: string }
   | { kind: 'role'; roleId: string };
@@ -157,6 +158,7 @@ const ExpressionSchema: z.ZodType<Expression> = z.lazy(() =>
 const AudienceSchema: z.ZodType<Audience> = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('everyone') }),
   z.object({ kind: z.literal('host') }),
+  z.object({ kind: z.literal('participant'), id: ExpressionSchema }),
   z.object({ kind: z.literal('participants'), ids: ExpressionSchema }),
   z.object({ kind: z.literal('team'), teamId: z.string().min(1) }),
   z.object({ kind: z.literal('role'), roleId: z.string().min(1) }),
@@ -219,7 +221,7 @@ export const OperationSchema: z.ZodType<Operation> = z.lazy(() =>
     z.object({
       id: z.string().min(1),
       kind: z.literal('time.wait'),
-      durationMs: z.number().int().positive(),
+      durationMs: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
     }),
     z.object({
       id: z.string().min(1),
@@ -287,13 +289,18 @@ export function canonicalJson(value: unknown): string {
     if (item !== null && typeof item === 'object') {
       return Object.fromEntries(
         Object.entries(item)
-          .sort(([a], [b]) => a.localeCompare(b))
+          .sort(([a], [b]) => compareCanonicalKeys(a, b))
           .map(([key, child]) => [key, normalize(child)]),
       );
     }
     return item;
   };
   return JSON.stringify(normalize(value));
+}
+
+/** Orders keys by their unnormalized UTF-16 code units, independent of locale settings. */
+export function compareCanonicalKeys(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 export function contentHash(value: unknown): string {

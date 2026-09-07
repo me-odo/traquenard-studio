@@ -1,4 +1,5 @@
 import type { Audience, GameArtifact, Operation, ParticipantId, Value } from '@traquenard/game-ir';
+import type { DeterministicRngState } from './rng.js';
 
 export interface Participant {
   readonly id: ParticipantId;
@@ -51,7 +52,7 @@ export interface CompositeReturnFrame {
   readonly kind: 'composite.return';
   readonly scopeId: string;
   readonly callerScopeId?: string;
-  readonly outputs: Readonly<Record<string, string>>;
+  readonly outputs: readonly { readonly port: string; readonly target: string }[];
 }
 
 export type Frame = OperationFrame | CompositeReturnFrame;
@@ -77,11 +78,17 @@ export interface EngineState {
   readonly artifact: GameArtifact;
   readonly participants: readonly Participant[];
   readonly variables: Readonly<Record<string, Value>>;
-  readonly scopes: Readonly<Record<string, Readonly<Record<string, Value>>>>;
+  readonly scopes: Readonly<Record<string, CompositeScope>>;
   readonly nextScopeId: number;
   readonly frames: readonly Frame[];
   readonly pending: Readonly<Record<string, PendingWait>>;
-  readonly rngState: number;
+  readonly rngState: DeterministicRngState;
   readonly logicalTime: number;
   readonly completed: boolean;
+}
+
+export interface CompositeScope {
+  readonly values: Readonly<Record<string, Value>>;
+  readonly outputNames: readonly string[];
+  readonly assignedOutputNames: readonly string[];
 }

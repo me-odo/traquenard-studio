@@ -32,7 +32,9 @@ function run(root: Operation, variables: GameDefinition['variables'] = []) {
     composites: [],
     root,
   };
-  return advanceExecution(createEngineState(publishArtifact(definition, 1), participants, 1));
+  return advanceExecution(
+    createEngineState(publishArtifact(definition, 1), participants, 'axiom-test-seed'),
+  );
 }
 
 describe('axiom registry and contracts', () => {
@@ -227,7 +229,7 @@ describe('axiom registry and contracts', () => {
       },
     };
     const result = advanceExecution(
-      createEngineState(publishArtifact(definition, 1), participants, 1),
+      createEngineState(publishArtifact(definition, 1), participants, 'axiom-test-seed'),
     );
     expect(result.state.completed).toBe(true);
     expect(result.state.variables.result).toBe('returned');
@@ -289,7 +291,7 @@ describe('axiom registry and contracts', () => {
     };
 
     const result = advanceExecution(
-      createEngineState(publishArtifact(definition, 1), participants, 1),
+      createEngineState(publishArtifact(definition, 1), participants, 'axiom-test-seed'),
     );
     expect(result.state.variables).toMatchObject({
       source: 'through both scopes',
@@ -344,7 +346,124 @@ describe('axiom registry and contracts', () => {
     };
 
     expect(() =>
-      advanceExecution(createEngineState(publishArtifact(definition, 1), participants, 1)),
+      advanceExecution(
+        createEngineState(publishArtifact(definition, 1), participants, 'axiom-test-seed'),
+      ),
     ).toThrow(/Unknown variable 'globalValue'/);
+  });
+
+  it('completes exactly once when the root exhausts normally', () => {
+    const empty = run({ id: 'empty-root', kind: 'sequence', steps: [] });
+    expect(empty.state.completed).toBe(true);
+    expect(empty.events).toEqual([{ kind: 'execution.completed', operationId: 'empty-root' }]);
+    expect(advanceExecution(empty.state).events).toEqual([]);
+
+    const presentation = run({
+      id: 'presentation-root',
+      kind: 'present',
+      audience: { kind: 'everyone' },
+      message: literal('Shown', t.string),
+      privacy: 'public',
+    });
+    expect(presentation.events.map((event) => event.kind)).toEqual([
+      'presentation.emitted',
+      'execution.completed',
+    ]);
+  });
+
+  it('keeps explicit end as early termination with a single completion event', () => {
+    const result = run({
+      id: 'root',
+      kind: 'sequence',
+      steps: [
+        { id: 'early-end', kind: 'end' },
+        {
+          id: 'unreachable',
+          kind: 'present',
+          audience: { kind: 'everyone' },
+          message: literal('Never shown', t.string),
+          privacy: 'public',
+        },
+      ],
+    });
+    expect(result.events).toEqual([{ kind: 'execution.completed', operationId: 'early-end' }]);
+  });
+
+  it('rejects a nonexistent participant in a parallel input wait', () => {
+    expect(() =>
+      run(
+        {
+          id: 'parallel',
+          kind: 'control.parallel',
+          join: 'all',
+          branches: [
+            {
+              id: 'missing-participant',
+              kind: 'input.wait',
+              participant: literal('nobody', t.participant),
+              prompt: 'Never satisfiable',
+              options: ['A'],
+              output: 'answer',
+            },
+          ],
+        },
+        [{ name: 'answer', type: t.string }],
+      ),
+    ).toThrow('not a session participant');
+  });
+
+  it('enforces Composite output assignment at runtime as defense in depth', () => {
+    const definition: GameDefinition = {
+      irVersion: IR_VERSION,
+      gameId: 'missing-runtime-output',
+      title: 'Missing runtime output',
+      variables: [{ name: 'result', type: t.string }],
+      composites: [
+        {
+          id: 'broken',
+          version: 1,
+          name: 'Broken',
+          inputs: [],
+          outputs: [{ name: 'value', type: t.string }],
+          implementation: { id: 'does-not-assign', kind: 'sequence', steps: [] },
+        },
+      ],
+      root: {
+        id: 'invoke-broken',
+        kind: 'composite.invoke',
+        compositeId: 'broken',
+        arguments: {},
+        outputs: { value: 'result' },
+      },
+    };
+    expect(() =>
+      advanceExecution(
+        createEngineState(publishArtifact(definition, 1), participants, 'axiom-test-seed'),
+      ),
+    ).toThrow("Composite output 'value' was not assigned");
+  });
+
+  it('rejects unsafe logical-time values and overflow before mutation', () => {
+    const base = createEngineState(
+      publishArtifact(
+        {
+          irVersion: IR_VERSION,
+          gameId: 'time-domain',
+          title: 'Time domain',
+          variables: [],
+          composites: [],
+          root: { id: 'timer', kind: 'time.wait', durationMs: 2 },
+        },
+        1,
+      ),
+      participants,
+      'axiom-test-seed',
+    );
+    expect(() => advanceLogicalTime(base, Number.MAX_SAFE_INTEGER + 1)).toThrow('safe integer');
+    const nearLimit = { ...base, logicalTime: Number.MAX_SAFE_INTEGER - 1 };
+    expect(() => advanceLogicalTime(nearLimit, 2)).toThrow('safe integer domain');
+    expect(() => advanceExecution(nearLimit)).toThrow('safe integer domain');
+    expect(nearLimit.logicalTime).toBe(Number.MAX_SAFE_INTEGER - 1);
+    expect(nearLimit.pending).toEqual({});
   });
 });

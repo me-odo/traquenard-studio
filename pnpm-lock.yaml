@@ -242,6 +242,9 @@ importers:
 
   packages/engine-core:
     dependencies:
+      '@noble/hashes':
+        specifier: 2.4.0
+        version: 2.4.0
       '@traquenard/game-ir':
         specifier: workspace:*
         version: link:../game-ir

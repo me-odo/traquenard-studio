@@ -12,7 +12,7 @@ const participants: readonly Participant[] = [
 ];
 
 describe('runtime properties', () => {
-  it('same artifact and seed always produce the same initial semantic trace', () => {
+  it('same artifact and internal semantic seed always produce the same initial semantic trace', () => {
     fc.assert(
       fc.property(fc.integer(), (seed) => {
         const options = {
@@ -20,7 +20,7 @@ describe('runtime properties', () => {
           joinCode: 'CODE',
           artifact: referenceSequential,
           participants,
-          seed,
+          semanticSeed: `property-seed:${seed}`,
         };
         expect(createSession(options)).toEqual(createSession(options));
       }),
@@ -36,7 +36,7 @@ describe('runtime properties', () => {
           joinCode: 'CODE',
           artifact: referenceCardRound,
           participants,
-          seed: 7,
+          semanticSeed: 'property-seed:7',
         });
         const projection = JSON.stringify(projectEvents(session, viewer));
         expect(projection.includes('Your private card')).toBe(viewer === 'p2');

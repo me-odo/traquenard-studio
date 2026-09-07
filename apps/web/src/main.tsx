@@ -61,7 +61,7 @@ function Studio() {
     const response = await fetch('/api/sessions', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ artifactId, hostName: 'Host', seed: 1 }),
+      body: JSON.stringify({ artifactId, hostName: 'Host' }),
     });
     const body = (await response.json()) as { joinCode: string; credential: string };
     setJoinCode(body.joinCode);

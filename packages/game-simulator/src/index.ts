@@ -24,7 +24,7 @@ export function simulateGame(artifact: GameArtifact, seed = 42): SimulationResul
     joinCode: 'SIM123',
     artifact,
     participants,
-    seed,
+    semanticSeed: `simulator-seed:${seed}`,
   });
   const trace: string[] = [];
   let command = 0;

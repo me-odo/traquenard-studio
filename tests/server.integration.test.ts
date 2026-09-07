@@ -8,7 +8,7 @@ describe('Fastify vertical slice', () => {
   afterEach(async () => app?.close());
 
   it('publishes, hosts, joins, and accepts an authoritative player intent', async () => {
-    app = await buildServer();
+    app = await buildServer({ semanticSeedFactory: () => 'server-test:2' });
     const artifact = publishDraft(sequentialDraft, 1);
     const published = await app.inject({
       method: 'POST',
@@ -20,8 +20,9 @@ describe('Fastify vertical slice', () => {
     const hosted = await app.inject({
       method: 'POST',
       url: '/api/sessions',
-      payload: { artifactId: artifact.artifactId, hostName: 'Host', seed: 1 },
+      payload: { artifactId: artifact.artifactId, hostName: 'Host' },
     });
+    expect(JSON.stringify(hosted.json())).not.toContain('server-test:2');
     expect(hosted.statusCode).toBe(201);
     const { joinCode, credential: hostCredential } = hosted.json<{
       joinCode: string;
@@ -33,6 +34,7 @@ describe('Fastify vertical slice', () => {
       url: `/api/sessions/${joinCode}/join`,
       payload: { name: 'Alex' },
     });
+    expect(JSON.stringify(joined.json())).not.toContain('server-test:2');
     const joinedBody = joined.json<{
       credential: string;
       events: Array<{ kind: string; payload: { operationId?: string; options?: string[] } }>;
@@ -74,7 +76,7 @@ describe('Fastify vertical slice', () => {
   });
 
   it('rejects artifact content with a forged immutable identity', async () => {
-    app = await buildServer();
+    app = await buildServer({ semanticSeedFactory: () => 'server-test:2' });
     const artifact = publishDraft(sequentialDraft, 1);
     const response = await app.inject({
       method: 'POST',
@@ -85,13 +87,32 @@ describe('Fastify vertical slice', () => {
     expect(response.json()).toMatchObject({ error: 'ARTIFACT_HASH_MISMATCH' });
   });
 
+  it('rejects forged identity supplied by a repository adapter before session creation', async () => {
+    const artifact = publishDraft(sequentialDraft, 1);
+    const forged = { ...artifact, artifactId: 'forged' };
+    app = await buildServer({
+      artifactRepository: {
+        put: () => Promise.resolve(),
+        getById: () => Promise.resolve(forged),
+      },
+      semanticSeedFactory: () => 'server-test:2',
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/sessions',
+      payload: { artifactId: artifact.artifactId, hostName: 'Host' },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ error: 'ARTIFACT_HASH_MISMATCH' });
+  });
+
   it('derives private projections from opaque credentials, never participant query input', async () => {
-    app = await buildServer();
+    app = await buildServer({ semanticSeedFactory: () => 'server-test:2' });
     await app.inject({ method: 'POST', url: '/api/artifacts', payload: referenceCardRound });
     const hosted = await app.inject({
       method: 'POST',
       url: '/api/sessions',
-      payload: { artifactId: referenceCardRound.artifactId, hostName: 'Host', seed: 1 },
+      payload: { artifactId: referenceCardRound.artifactId, hostName: 'Host' },
     });
     const host = hosted.json<{ joinCode: string; credential: string }>();
     const joined = await app.inject({
@@ -114,6 +135,14 @@ describe('Fastify vertical slice', () => {
     expect(hostView.statusCode).toBe(200);
     expect(JSON.stringify(hostView.json())).not.toContain('Your private card');
     expect(JSON.stringify(guestView.json())).toContain('Your private card');
+    expect(JSON.stringify(hostView.json())).not.toContain('semanticSeed');
+    expect(JSON.stringify(guestView.json())).not.toContain('semanticSeed');
+    expect(JSON.stringify(hostView.json())).not.toContain('rngState');
+    expect(JSON.stringify(guestView.json())).not.toContain('rngState');
+    for (const cardId of ['hearts-a', 'spades-k', 'diamonds-q']) {
+      expect(JSON.stringify(hostView.json())).not.toContain(cardId);
+      expect(JSON.stringify(guestView.json())).not.toContain(cardId);
+    }
 
     const unauthenticated = await app.inject({
       method: 'GET',
@@ -124,7 +153,7 @@ describe('Fastify vertical slice', () => {
   });
 
   it('does not expose trusted time or connectivity inputs on the command transport', async () => {
-    app = await buildServer();
+    app = await buildServer({ semanticSeedFactory: () => 'server-test:2' });
     const artifact = publishDraft(sequentialDraft, 1);
     await app.inject({ method: 'POST', url: '/api/artifacts', payload: artifact });
     const hosted = await app.inject({
@@ -163,5 +192,19 @@ describe('Fastify vertical slice', () => {
       },
     });
     expect(lifecycle.statusCode).toBe(400);
+  });
+
+  it('rejects client-controlled semantic seeds and unknown session-creation fields', async () => {
+    app = await buildServer({ semanticSeedFactory: () => 'server-owned-secret' });
+    const artifact = publishDraft(sequentialDraft, 1);
+    await app.inject({ method: 'POST', url: '/api/artifacts', payload: artifact });
+    for (const payload of [
+      { artifactId: artifact.artifactId, hostName: 'Host', seed: 1 },
+      { artifactId: artifact.artifactId, hostName: 'Host', semanticSeed: 'chosen' },
+    ]) {
+      const response = await app.inject({ method: 'POST', url: '/api/sessions', payload });
+      expect(response.statusCode).toBe(400);
+      expect(JSON.stringify(response.json())).not.toContain('server-owned-secret');
+    }
   });
 });

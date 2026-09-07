@@ -1,4 +1,7 @@
 import {
+  compareCanonicalKeys,
+  contentHash,
+  parseGameArtifact,
   valueConformsToType,
   type Audience,
   type CompositeDefinition,
@@ -28,6 +31,17 @@ const primitive = (kind: 'string' | 'number' | 'boolean' | 'participant' | 'card
 interface SemanticScope {
   readonly variables: Map<string, TypeRef>;
   readonly allowsParticipantsContext: boolean;
+}
+
+export type ArtifactAcceptanceErrorCode = 'ARTIFACT_HASH_MISMATCH' | 'INVALID_ARTIFACT';
+
+export class ArtifactAcceptanceError extends Error {
+  public constructor(
+    public readonly code: ArtifactAcceptanceErrorCode,
+    message: string,
+  ) {
+    super(message);
+  }
 }
 
 export function sameType(left: TypeRef, right: TypeRef): boolean {
@@ -60,6 +74,10 @@ export function validateDefinition(definition: GameDefinition): ValidationResult
   );
   const composites = new Map(definition.composites.map((composite) => [composite.id, composite]));
   const nodeIds = new Set<string>();
+  const compositeCalls = new Map<
+    string,
+    Array<{ readonly target: string; readonly path: string }>
+  >();
 
   if (definition.irVersion !== 1)
     issue('irVersion', 'unsupported_version', 'Only Game IR version 1 is supported.');
@@ -91,8 +109,10 @@ export function validateDefinition(definition: GameDefinition): ValidationResult
     };
     for (const port of [...composite.inputs, ...composite.outputs])
       scope.variables.set(port.name, port.type);
-    visit(composite.implementation, `composites.${index}.implementation`, scope);
+    visit(composite.implementation, `composites.${index}.implementation`, scope, composite.id);
   }
+  const hasCompositeCycle = validateCompositeCallCycles();
+  if (!hasCompositeCycle) validateCompositeOutputAssignments();
   return { valid: issues.length === 0, issues };
 
   function issue(path: string, code: string, message: string): void {
@@ -142,6 +162,8 @@ export function validateDefinition(definition: GameDefinition): ValidationResult
           issue(path, 'comparison_type_mismatch', 'Equality operands must have the same type.');
         return primitive('boolean');
       }
+      default:
+        return assertNever(expression);
     }
   }
 
@@ -168,13 +190,20 @@ export function validateDefinition(definition: GameDefinition): ValidationResult
       issue(path, 'output_type_mismatch', `Output '${name}' must be ${showType(expected)}.`);
   }
 
-  function visit(operation: Operation, path: string, scope: SemanticScope): void {
+  function visit(
+    operation: Operation,
+    path: string,
+    scope: SemanticScope,
+    ownerCompositeId?: string,
+  ): void {
     if (nodeIds.has(operation.id))
       issue(path, 'duplicate_node_id', `Operation id '${operation.id}' is duplicated.`);
     nodeIds.add(operation.id);
     switch (operation.kind) {
       case 'sequence':
-        operation.steps.forEach((step, index) => visit(step, `${path}.steps.${index}`, scope));
+        operation.steps.forEach((step, index) =>
+          visit(step, `${path}.steps.${index}`, scope, ownerCompositeId),
+        );
         break;
       case 'set': {
         const target = scope.variables.get(operation.variable);
@@ -211,8 +240,8 @@ export function validateDefinition(definition: GameDefinition): ValidationResult
         break;
       case 'control.if':
         requireType(operation.condition, primitive('boolean'), `${path}.condition`, scope);
-        visit(operation.then, `${path}.then`, scope);
-        if (operation.else) visit(operation.else, `${path}.else`, scope);
+        visit(operation.then, `${path}.then`, scope, ownerCompositeId);
+        if (operation.else) visit(operation.else, `${path}.else`, scope, ownerCompositeId);
         break;
       case 'control.foreach': {
         const source = expressionType(operation.collection, `${path}.collection`, scope);
@@ -221,10 +250,11 @@ export function validateDefinition(definition: GameDefinition): ValidationResult
         const child = cloneScope(scope);
         if (source?.kind === 'collection')
           child.variables.set(operation.itemVariable, source.element);
-        visit(operation.body, `${path}.body`, child);
+        visit(operation.body, `${path}.body`, child, ownerCompositeId);
         break;
       }
       case 'control.parallel':
+        validateParallelWrites(operation, path);
         for (const [index, branch] of operation.branches.entries()) {
           if (!['input.wait', 'time.wait', 'present'].includes(branch.kind))
             issue(
@@ -232,12 +262,16 @@ export function validateDefinition(definition: GameDefinition): ValidationResult
               'unsafe_parallel_v1',
               'IR v1 parallel branches must be independent input, timer, or presentation operations.',
             );
-          visit(branch, `${path}.branches.${index}`, cloneScope(scope));
+          visit(branch, `${path}.branches.${index}`, cloneScope(scope), ownerCompositeId);
         }
         break;
       case 'time.wait':
-        if (operation.durationMs <= 0)
-          issue(`${path}.durationMs`, 'invalid_duration', 'Timer duration must be positive.');
+        if (!Number.isSafeInteger(operation.durationMs) || operation.durationMs <= 0)
+          issue(
+            `${path}.durationMs`,
+            'invalid_duration',
+            'Timer duration must be a positive safe integer.',
+          );
         break;
       case 'collection.shuffle': {
         const source = expressionType(operation.collection, `${path}.collection`, scope);
@@ -263,6 +297,11 @@ export function validateDefinition(definition: GameDefinition): ValidationResult
         break;
       }
       case 'composite.invoke': {
+        if (ownerCompositeId) {
+          const calls = compositeCalls.get(ownerCompositeId) ?? [];
+          calls.push({ target: operation.compositeId, path });
+          compositeCalls.set(ownerCompositeId, calls);
+        }
         const composite = composites.get(operation.compositeId);
         if (!composite) {
           issue(
@@ -286,21 +325,200 @@ export function validateDefinition(definition: GameDefinition): ValidationResult
           (name, type, bindingPath) =>
             requireOutput(operation.outputs[name]!, type, bindingPath, scope),
         );
+        validateCompositeOutputAliases(operation, composite, path);
         break;
       }
       case 'end':
         break;
+      default:
+        assertNever(operation);
     }
   }
 
   function validateAudience(audience: Audience, path: string, scope: SemanticScope): void {
-    if (audience.kind === 'participants')
-      requireType(
-        audience.ids,
-        { kind: 'collection', element: primitive('participant') },
-        `${path}.ids`,
-        scope,
-      );
+    switch (audience.kind) {
+      case 'participant':
+        requireType(audience.id, primitive('participant'), `${path}.id`, scope);
+        break;
+      case 'participants':
+        requireType(
+          audience.ids,
+          { kind: 'collection', element: primitive('participant') },
+          `${path}.ids`,
+          scope,
+        );
+        break;
+      case 'everyone':
+      case 'host':
+      case 'team':
+      case 'role':
+        break;
+      default:
+        assertNever(audience);
+    }
+  }
+
+  function validateParallelWrites(
+    operation: Extract<Operation, { kind: 'control.parallel' }>,
+    path: string,
+  ): void {
+    const writers = new Map<string, number>();
+    for (const [index, branch] of operation.branches.entries()) {
+      if (branch.kind !== 'input.wait') continue;
+      const previous = writers.get(branch.output);
+      if (previous !== undefined)
+        issue(
+          `${path}.branches.${index}.output`,
+          'parallel_write_conflict',
+          `Parallel branches ${previous} and ${index} both write '${branch.output}'.`,
+        );
+      else writers.set(branch.output, index);
+    }
+  }
+
+  function validateCompositeOutputAliases(
+    operation: Extract<Operation, { kind: 'composite.invoke' }>,
+    composite: CompositeDefinition,
+    path: string,
+  ): void {
+    const targetPorts = new Map<string, string>();
+    for (const port of composite.outputs) {
+      const target = operation.outputs[port.name];
+      if (target === undefined) continue;
+      const previousPort = targetPorts.get(target);
+      if (previousPort)
+        issue(
+          `${path}.outputs.${port.name}`,
+          'composite_output_alias',
+          `Composite output ports '${previousPort}' and '${port.name}' cannot both bind caller variable '${target}'.`,
+        );
+      else targetPorts.set(target, port.name);
+    }
+  }
+
+  function validateCompositeCallCycles(): boolean {
+    const states = new Map<string, 'visiting' | 'visited'>();
+    const stack: string[] = [];
+    let foundCycle = false;
+
+    const visitComposite = (compositeId: string): void => {
+      states.set(compositeId, 'visiting');
+      stack.push(compositeId);
+      for (const call of compositeCalls.get(compositeId) ?? []) {
+        if (!composites.has(call.target)) continue;
+        const targetState = states.get(call.target);
+        if (targetState === 'visiting') {
+          const cycleStart = stack.indexOf(call.target);
+          const cycle = [...stack.slice(cycleStart), call.target];
+          issue(
+            `${call.path}.compositeId`,
+            'composite_call_cycle',
+            `Composite calls must be acyclic in IR v1; found ${cycle.join(' -> ')}.`,
+          );
+          foundCycle = true;
+        } else if (targetState === undefined) visitComposite(call.target);
+      }
+      stack.pop();
+      states.set(compositeId, 'visited');
+    };
+
+    for (const composite of definition.composites)
+      if (states.get(composite.id) === undefined) visitComposite(composite.id);
+    return foundCycle;
+  }
+
+  function validateCompositeOutputAssignments(): void {
+    const summaries = new Map<string, FlowSummary>();
+
+    const summarizeComposite = (compositeId: string): FlowSummary => {
+      const existing = summaries.get(compositeId);
+      if (existing) return existing;
+      const composite = composites.get(compositeId);
+      if (!composite) return { assigned: new Set(), returnsNormally: true };
+      const summary = analyze(composite.implementation, new Set());
+      summaries.set(compositeId, summary);
+      return summary;
+    };
+
+    const analyze = (operation: Operation, incoming: ReadonlySet<string>): FlowSummary => {
+      switch (operation.kind) {
+        case 'sequence': {
+          let current: FlowSummary = { assigned: new Set(incoming), returnsNormally: true };
+          for (const step of operation.steps) {
+            if (!current.returnsNormally) break;
+            current = analyze(step, current.assigned);
+          }
+          return current;
+        }
+        case 'set':
+          return assignedFlow(incoming, operation.variable);
+        case 'random.select':
+        case 'input.wait':
+        case 'collection.shuffle':
+          return assignedFlow(incoming, operation.output);
+        case 'collection.draw':
+          return assignedFlow(
+            assignedFlow(incoming, operation.collectionVariable).assigned,
+            operation.output,
+          );
+        case 'composite.invoke': {
+          const callee = summarizeComposite(operation.compositeId);
+          if (!callee.returnsNormally)
+            return { assigned: new Set(incoming), returnsNormally: false };
+          const assigned = new Set(incoming);
+          const composite = composites.get(operation.compositeId);
+          for (const port of composite?.outputs ?? []) {
+            const target = operation.outputs[port.name];
+            if (target !== undefined) assigned.add(target);
+          }
+          return { assigned, returnsNormally: true };
+        }
+        case 'control.if': {
+          const branches = [
+            analyze(operation.then, incoming),
+            operation.else
+              ? analyze(operation.else, incoming)
+              : { assigned: new Set(incoming), returnsNormally: true },
+          ].filter((branch) => branch.returnsNormally);
+          if (branches.length === 0) return { assigned: new Set(incoming), returnsNormally: false };
+          let assigned = new Set(branches[0]!.assigned);
+          for (const branch of branches.slice(1))
+            assigned = new Set([...assigned].filter((name) => branch.assigned.has(name)));
+          return { assigned, returnsNormally: true };
+        }
+        case 'control.foreach':
+          return { assigned: new Set(incoming), returnsNormally: true };
+        case 'control.parallel': {
+          const assigned = new Set(incoming);
+          for (const branch of operation.branches)
+            if (branch.kind === 'input.wait') assigned.add(branch.output);
+          return { assigned, returnsNormally: true };
+        }
+        case 'present':
+        case 'time.wait':
+          return { assigned: new Set(incoming), returnsNormally: true };
+        case 'end':
+          return { assigned: new Set(incoming), returnsNormally: false };
+        default:
+          return assertNever(operation);
+      }
+    };
+
+    for (const [compositeIndex, composite] of definition.composites.entries()) {
+      const summary = summarizeComposite(composite.id);
+      if (!summary.returnsNormally) continue;
+      for (const [outputIndex, output] of composite.outputs.entries())
+        if (!summary.assigned.has(output.name))
+          issue(
+            `composites.${compositeIndex}.outputs.${outputIndex}`,
+            'composite_output_not_assigned',
+            `Composite output '${output.name}' is not definitely assigned on every normal return path.`,
+          );
+    }
+  }
+
+  function assignedFlow(incoming: ReadonlySet<string>, name: string): FlowSummary {
+    return { assigned: new Set([...incoming, name]), returnsNormally: true };
   }
 
   function cloneScope(scope: SemanticScope): SemanticScope {
@@ -336,16 +554,65 @@ export function validateDefinition(definition: GameDefinition): ValidationResult
         );
       else validate(port.name, port.type, `${path}.${port.name}`);
     }
-    for (const name of Object.keys(bindings))
+    for (const name of Object.keys(bindings).sort(compareCanonicalKeys))
       if (!expectedNames.has(name))
         issue(`${path}.${name}`, 'unknown_composite_binding', `Unknown binding '${name}'.`);
   }
 }
 
+interface FlowSummary {
+  readonly assigned: ReadonlySet<string>;
+  readonly returnsNormally: boolean;
+}
+
 export function validateArtifact(artifact: GameArtifact): ValidationResult {
-  return validateDefinition(artifact.definition);
+  const issues: ValidationIssue[] = [];
+  const expectedHash = contentHash({
+    artifactFormat: artifact.artifactFormat,
+    gameVersion: artifact.gameVersion,
+    definition: artifact.definition,
+    assets: artifact.assets,
+  });
+  if (
+    artifact.contentHash !== expectedHash ||
+    artifact.artifactId !== `${artifact.definition.gameId}@${artifact.gameVersion}:${expectedHash}`
+  )
+    issues.push({
+      path: 'artifactId',
+      code: 'artifact_identity_mismatch',
+      message: 'Artifact identity does not match canonical content.',
+    });
+  return mergeValidationResults(
+    { valid: issues.length === 0, issues },
+    validateDefinition(artifact.definition),
+  );
+}
+
+export function acceptArtifact(input: unknown): GameArtifact {
+  const artifact = parseGameArtifact(input);
+  const validation = validateArtifact(artifact);
+  const identityIssue = validation.issues.find(
+    (item) => item.code === 'artifact_identity_mismatch',
+  );
+  if (identityIssue)
+    throw new ArtifactAcceptanceError('ARTIFACT_HASH_MISMATCH', identityIssue.message);
+  if (!validation.valid)
+    throw new ArtifactAcceptanceError(
+      'INVALID_ARTIFACT',
+      validation.issues.map((item) => `${item.path}: ${item.message}`).join(' '),
+    );
+  return artifact;
 }
 
 function showType(type: TypeRef): string {
   return type.kind === 'collection' ? `Collection<${showType(type.element)}>` : type.kind;
+}
+
+function mergeValidationResults(...results: readonly ValidationResult[]): ValidationResult {
+  const issues = results.flatMap((result) => result.issues);
+  return { valid: issues.length === 0, issues };
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unhandled semantic variant: ${JSON.stringify(value)}`);
 }

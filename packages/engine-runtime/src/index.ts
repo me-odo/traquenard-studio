@@ -8,8 +8,8 @@ import {
   type Participant,
   type SemanticEvent,
 } from '@traquenard/engine-core';
-import type { GameArtifact, ParticipantId } from '@traquenard/game-ir';
-import { validateArtifact } from '@traquenard/game-validator';
+import { contentHash, type GameArtifact, type ParticipantId } from '@traquenard/game-ir';
+import { acceptArtifact } from '@traquenard/game-validator';
 
 export interface ClientCommand {
   readonly protocolVersion: 1;
@@ -45,11 +45,13 @@ export type ProcessedInputKey =
       readonly source: 'client';
       readonly participantId: ParticipantId;
       readonly commandId: string;
+      readonly payloadHash: string;
     }
   | {
       readonly source: 'system';
       readonly inputKind: SystemInput['kind'];
       readonly inputId: string;
+      readonly payloadHash: string;
     };
 
 export type RuntimeEventPayload =
@@ -57,7 +59,7 @@ export type RuntimeEventPayload =
   | {
       readonly kind: 'session.created';
       readonly artifactId: string;
-      readonly seed: number;
+      readonly semanticSeed: string;
       readonly participantIds: readonly string[];
     }
   | {
@@ -96,25 +98,26 @@ export interface ClientEvent {
   readonly payload: Readonly<Record<string, unknown>>;
 }
 
-export function createSession(options: {
+export interface InternalSessionOptions {
   readonly sessionId: string;
   readonly joinCode: string;
   readonly artifact: GameArtifact;
   readonly participants: readonly Participant[];
-  readonly seed: number;
-}): SessionState {
-  const validation = validateArtifact(options.artifact);
-  if (!validation.valid)
-    throw new EngineError(
-      'INVALID_ARTIFACT',
-      validation.issues.map((item) => item.message).join(' '),
-    );
+  /** Server-private replay material. Public transports must never accept or project it. */
+  readonly semanticSeed: string;
+}
+
+export function createSession(options: InternalSessionOptions): SessionState {
+  const artifact = acceptArtifact(options.artifact);
+  const participants = Object.freeze(
+    options.participants.map((participant) => Object.freeze({ ...participant })),
+  );
   const base: SessionState = {
     sessionId: options.sessionId,
     joinCode: options.joinCode,
     status: 'running',
-    engine: createEngineState(options.artifact, options.participants, options.seed),
-    connectedParticipantIds: options.participants.map((item) => item.id),
+    engine: createEngineState(artifact, participants, options.semanticSeed),
+    connectedParticipantIds: participants.map((item) => item.id),
     processedInputs: [],
     inputHistory: [],
     eventLog: [],
@@ -122,9 +125,9 @@ export function createSession(options: {
   return advanceAndAppend(
     append(base, {
       kind: 'session.created',
-      artifactId: options.artifact.artifactId,
-      seed: options.seed,
-      participantIds: options.participants.map((item) => item.id),
+      artifactId: artifact.artifactId,
+      semanticSeed: options.semanticSeed,
+      participantIds: participants.map((item) => item.id),
     }),
   );
 }
@@ -143,15 +146,16 @@ export function applyClientCommand(
     source: 'client',
     participantId: authenticatedParticipantId,
     commandId: command.commandId,
+    payloadHash: contentHash(command),
   };
-  if (wasProcessed(session, processedKey)) return session;
+  if (assertIdempotency(session, processedKey)) return session;
   assertCanAdvance(session);
   if (session.status === 'paused')
     throw new EngineError('SESSION_PAUSED', 'Gameplay is frozen while the session is paused.');
   let next = record(session, processedKey, {
     source: 'client',
     participantId: authenticatedParticipantId,
-    command,
+    command: Object.freeze({ ...command }),
   });
   next = {
     ...next,
@@ -176,12 +180,16 @@ export function applySystemInput(session: SessionState, input: SystemInput): Ses
     source: 'system',
     inputKind: input.kind,
     inputId: input.inputId,
+    payloadHash: contentHash(input),
   };
-  if (wasProcessed(session, processedKey)) return session;
+  if (assertIdempotency(session, processedKey)) return session;
   assertCanAdvance(session);
   if (session.status === 'paused' && input.kind === 'time.advance')
     throw new EngineError('SESSION_PAUSED', 'Logical time is frozen while the session is paused.');
-  let next = record(session, processedKey, { source: 'system', input });
+  let next = record(session, processedKey, {
+    source: 'system',
+    input: Object.freeze({ ...input }),
+  });
   switch (input.kind) {
     case 'time.advance':
       next = { ...next, engine: advanceLogicalTime(next.engine, input.milliseconds) };
@@ -218,6 +226,8 @@ export function applySystemInput(session: SessionState, input: SystemInput): Ses
         ? advanceAndAppend(append({ ...next, status: 'running' }, { kind: 'session.resumed' }))
         : next;
     }
+    default:
+      return assertNever(input);
   }
 }
 
@@ -239,38 +249,74 @@ export function projectEvents(
   viewerId: ParticipantId,
 ): readonly ClientEvent[] {
   if (!session.engine.participants.some((participant) => participant.id === viewerId)) return [];
-  const publicKinds = new Set([
-    'session.created',
-    'session.paused',
-    'session.resumed',
-    'participant.connected',
-    'participant.disconnected',
-    'execution.completed',
-  ]);
   return session.eventLog.flatMap((event): ClientEvent[] => {
     const payload = event.payload;
-    if (payload.kind === 'presentation.emitted' || payload.kind === 'input.requested') {
-      if (!payload.audience.participantIds.includes(viewerId)) return [];
-      const { audience, ...visible } = payload;
-      void audience;
-      return [
-        {
-          sequence: event.sequence,
-          logicalTime: event.logicalTime,
-          kind: payload.kind,
-          payload: visible,
-        },
-      ];
+    switch (payload.kind) {
+      case 'session.created':
+        return [
+          project(event, payload.kind, {
+            kind: payload.kind,
+            artifactId: payload.artifactId,
+            participantIds: [...payload.participantIds],
+          }),
+        ];
+      case 'presentation.emitted':
+        return payload.audience.participantIds.includes(viewerId)
+          ? [
+              project(event, payload.kind, {
+                kind: payload.kind,
+                operationId: payload.operationId,
+                message: payload.message,
+                privacy: payload.privacy,
+              }),
+            ]
+          : [];
+      case 'input.requested':
+        return payload.audience.participantIds.includes(viewerId)
+          ? [
+              project(event, payload.kind, {
+                kind: payload.kind,
+                operationId: payload.operationId,
+                participantId: payload.participantId,
+                prompt: payload.prompt,
+                options: [...payload.options],
+              }),
+            ]
+          : [];
+      case 'session.paused':
+        return [
+          project(event, payload.kind, {
+            kind: payload.kind,
+            disconnectedParticipantId: payload.disconnectedParticipantId,
+          }),
+        ];
+      case 'participant.connected':
+      case 'participant.disconnected':
+        return [
+          project(event, payload.kind, {
+            kind: payload.kind,
+            participantId: payload.participantId,
+          }),
+        ];
+      case 'execution.completed':
+        return [
+          project(event, payload.kind, {
+            kind: payload.kind,
+            operationId: payload.operationId,
+          }),
+        ];
+      case 'session.resumed':
+        return [project(event, payload.kind, { kind: payload.kind })];
+      case 'random.selected':
+      case 'collection.shuffled':
+      case 'collection.drawn':
+      case 'input.accepted':
+      case 'time.advanced':
+      case 'timer.scheduled':
+        return [];
+      default:
+        return assertNever(payload);
     }
-    if (!publicKinds.has(payload.kind)) return [];
-    return [
-      {
-        sequence: event.sequence,
-        logicalTime: event.logicalTime,
-        kind: payload.kind,
-        payload: { ...payload },
-      },
-    ];
   });
 }
 
@@ -286,17 +332,23 @@ function participantFor(session: SessionState, participantId: ParticipantId): Pa
   return participant;
 }
 
-function wasProcessed(session: SessionState, candidate: ProcessedInputKey): boolean {
-  return session.processedInputs.some((processed) => {
-    if (processed.source !== candidate.source) return false;
-    return processed.source === 'client' && candidate.source === 'client'
-      ? processed.participantId === candidate.participantId &&
-          processed.commandId === candidate.commandId
-      : processed.source === 'system' &&
+function assertIdempotency(session: SessionState, candidate: ProcessedInputKey): boolean {
+  const processed = session.processedInputs.find((item) => {
+    if (item.source !== candidate.source) return false;
+    return item.source === 'client' && candidate.source === 'client'
+      ? item.participantId === candidate.participantId && item.commandId === candidate.commandId
+      : item.source === 'system' &&
           candidate.source === 'system' &&
-          processed.inputKind === candidate.inputKind &&
-          processed.inputId === candidate.inputId;
+          item.inputKind === candidate.inputKind &&
+          item.inputId === candidate.inputId;
   });
+  if (!processed) return false;
+  if (processed.payloadHash !== candidate.payloadHash)
+    throw new EngineError(
+      'IDEMPOTENCY_CONFLICT',
+      'An idempotency key was reused with a different semantic payload.',
+    );
+  return true;
 }
 
 function record(
@@ -327,6 +379,18 @@ function append(session: SessionState, payload: RuntimeEventPayload): SessionSta
     payload,
   };
   return { ...session, eventLog: [...session.eventLog, event] };
+}
+
+function project(
+  event: RuntimeEvent,
+  kind: RuntimeEventPayload['kind'],
+  payload: Readonly<Record<string, unknown>>,
+): ClientEvent {
+  return { sequence: event.sequence, logicalTime: event.logicalTime, kind, payload };
+}
+
+function assertNever(value: never): never {
+  throw new EngineError('INVALID_ARTIFACT', `Unhandled runtime variant: ${JSON.stringify(value)}`);
 }
 
 export type { Participant } from '@traquenard/engine-core';

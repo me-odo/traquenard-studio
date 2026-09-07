@@ -5,10 +5,11 @@ export {
   type AxiomRegistry,
 } from './axioms.js';
 export { resolveAudience } from './audience.js';
-export { EngineError } from './errors.js';
+export { EngineError, type EngineErrorCode } from './errors.js';
 export { evaluate } from './evaluator.js';
 export { advanceExecution } from './execution.js';
 export { createEngineState } from './state.js';
+export { createRngState, randomIndex, type DeterministicRngState } from './rng.js';
 export type {
   EngineState,
   Frame,

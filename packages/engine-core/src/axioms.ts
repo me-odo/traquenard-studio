@@ -63,7 +63,7 @@ export const axiomRegistry = {
     ['collection', 'RNG state'],
     ['value'],
     ['state', 'event'],
-    'Advances explicit seeded RNG once.',
+    'Advances a private HMAC-SHA-256 counter and uses rejection sampling.',
     ['EMPTY_COLLECTION'],
   ),
   present: descriptor(
@@ -106,7 +106,7 @@ export const axiomRegistry = {
     [],
     ['control', 'wait'],
     'V1 accepts only independent wait/presentation branches.',
-    ['UNSAFE_PARALLEL_BRANCH'],
+    ['UNSAFE_PARALLEL_BRANCH', 'UNKNOWN_PARTICIPANT'],
   ),
   'time.wait': descriptor(
     'time.wait',
@@ -114,7 +114,8 @@ export const axiomRegistry = {
     ['duration', 'logical time'],
     [],
     ['wait', 'event'],
-    'Schedules against explicit logical time.',
+    'Schedules against explicit safe-integer logical time and rejects overflow.',
+    ['INVALID_TIME', 'TIME_OVERFLOW'],
   ),
   'collection.shuffle': descriptor(
     'collection.shuffle',
@@ -122,7 +123,7 @@ export const axiomRegistry = {
     ['collection', 'RNG state'],
     ['collection'],
     ['state', 'event'],
-    'Uses Fisher–Yates with explicit seeded RNG.',
+    'Uses Fisher–Yates with private HMAC-SHA-256 counter-mode RNG.',
   ),
   'collection.draw': descriptor(
     'collection.draw',
@@ -140,7 +141,12 @@ export const axiomRegistry = {
     ['typed bindings'],
     ['control'],
     'Creates a scope containing only declared ports, executes the pinned implementation, then copies declared outputs to the caller scope.',
-    ['UNKNOWN_COMPOSITE', 'UNKNOWN_VARIABLE', 'IMPLICIT_COMPOSITE_CONTEXT'],
+    [
+      'UNKNOWN_COMPOSITE',
+      'UNKNOWN_VARIABLE',
+      'IMPLICIT_COMPOSITE_CONTEXT',
+      'UNASSIGNED_COMPOSITE_OUTPUT',
+    ],
   ),
   end: descriptor(
     'end',
@@ -148,7 +154,7 @@ export const axiomRegistry = {
     [],
     [],
     ['event'],
-    'Clears frames and emits completion.',
+    'Clears frames and emits early/unconditional completion; normal root exhaustion also completes.',
   ),
 } satisfies AxiomRegistry;
 

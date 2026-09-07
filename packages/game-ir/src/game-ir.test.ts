@@ -32,12 +32,39 @@ describe('Game Artifact publishing', () => {
     expect(canonicalJson({ b: 2, a: { d: 4, c: 3 } })).toBe('{"a":{"c":3,"d":4},"b":2}');
   });
 
+  it('orders ASCII and non-ASCII keys by locale-independent UTF-16 code units', () => {
+    const first = { ä: 1, z: 2, é: { å: 3, a: 4 } };
+    const second = { é: { a: 4, å: 3 }, z: 2, ä: 1 };
+    expect(canonicalJson(first)).toBe('{"z":2,"ä":1,"é":{"a":4,"å":3}}');
+    expect(canonicalJson(second)).toBe(canonicalJson(first));
+  });
+
+  it('does not normalize semantically distinct Unicode strings', () => {
+    expect(canonicalJson({ value: 'é' })).not.toBe(canonicalJson({ value: 'e\u0301' }));
+  });
+
   it('rejects an unsupported serialized IR version', () => {
     expect(() =>
       parseGameArtifact({
         ...publishArtifact(definition, 1),
         definition: { ...definition, irVersion: 2 },
       }),
+    ).toThrow();
+  });
+
+  it('rejects timer durations outside the safe-integer domain', () => {
+    expect(() =>
+      publishArtifact(
+        {
+          ...definition,
+          root: {
+            id: 'unsafe-timer',
+            kind: 'time.wait',
+            durationMs: Number.MAX_SAFE_INTEGER + 1,
+          },
+        },
+        1,
+      ),
     ).toThrow();
   });
 

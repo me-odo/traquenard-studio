@@ -21,8 +21,17 @@ export function acceptInput(
 }
 
 export function advanceLogicalTime(state: EngineState, milliseconds: number): EngineState {
-  if (!Number.isInteger(milliseconds) || milliseconds < 0)
-    throw new EngineError('INVALID_TIME', 'Logical time delta must be a non-negative integer.');
+  if (!Number.isSafeInteger(milliseconds) || milliseconds < 0)
+    throw new EngineError(
+      'INVALID_TIME',
+      'Logical time delta must be a non-negative safe integer.',
+    );
+  if (
+    !Number.isSafeInteger(state.logicalTime) ||
+    state.logicalTime < 0 ||
+    state.logicalTime > Number.MAX_SAFE_INTEGER - milliseconds
+  )
+    throw new EngineError('TIME_OVERFLOW', 'Logical time exceeds the safe integer domain.');
   const logicalTime = state.logicalTime + milliseconds;
   const pending = Object.fromEntries(
     Object.entries(state.pending).filter(

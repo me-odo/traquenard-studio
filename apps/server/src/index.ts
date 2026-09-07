@@ -9,8 +9,8 @@ import {
   type Participant,
   type SessionState,
 } from '@traquenard/engine-runtime';
-import { contentHash, parseGameArtifact, type GameArtifact } from '@traquenard/game-ir';
-import { validateArtifact } from '@traquenard/game-validator';
+import type { GameArtifact } from '@traquenard/game-ir';
+import { acceptArtifact, ArtifactAcceptanceError } from '@traquenard/game-validator';
 import {
   ClientCommandSchema,
   CreateSessionSchema,
@@ -29,7 +29,7 @@ interface Lobby {
   readonly joinCode: string;
   readonly artifact: GameArtifact;
   readonly host: Participant;
-  readonly seed: number;
+  readonly semanticSeed: string;
   readonly credentials: Map<string, string>;
   session?: SessionState;
 }
@@ -38,6 +38,7 @@ export async function buildServer(
   options: {
     readonly artifactRepository?: ArtifactRepository;
     readonly credentialFactory?: () => string;
+    readonly semanticSeedFactory?: () => string;
   } = {},
 ): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
@@ -45,6 +46,8 @@ export async function buildServer(
   const artifacts = options.artifactRepository ?? new InMemoryArtifactRepository();
   const credentialFactory =
     options.credentialFactory ?? (() => randomBytes(32).toString('base64url'));
+  const semanticSeedFactory =
+    options.semanticSeedFactory ?? (() => randomBytes(32).toString('hex'));
   const lobbies = new Map<string, Lobby>();
   let sessionSequence = 0;
 
@@ -54,13 +57,16 @@ export async function buildServer(
         ? 401
         : error instanceof ArtifactVersionConflictError
           ? 409
-          : error instanceof z.ZodError || error instanceof EngineError
+          : error instanceof z.ZodError ||
+              error instanceof EngineError ||
+              error instanceof ArtifactAcceptanceError
             ? 400
             : 500;
     const message = error instanceof Error ? error.message : 'Unknown request error';
     return reply.status(status).send({
       error:
         error instanceof EngineError ||
+        error instanceof ArtifactAcceptanceError ||
         error instanceof AuthenticationError ||
         error instanceof ArtifactVersionConflictError
           ? error.code
@@ -72,27 +78,7 @@ export async function buildServer(
   app.get('/health', () => ({ status: 'ok' }));
 
   app.post('/api/artifacts', async (request, reply) => {
-    const artifact = parseGameArtifact(request.body);
-    const expected = contentHash({
-      artifactFormat: artifact.artifactFormat,
-      gameVersion: artifact.gameVersion,
-      definition: artifact.definition,
-      assets: artifact.assets,
-    });
-    if (
-      expected !== artifact.contentHash ||
-      artifact.artifactId !== `${artifact.definition.gameId}@${artifact.gameVersion}:${expected}`
-    )
-      throw new EngineError(
-        'ARTIFACT_HASH_MISMATCH',
-        'Artifact identity does not match canonical content.',
-      );
-    const validation = validateArtifact(artifact);
-    if (!validation.valid)
-      throw new EngineError(
-        'INVALID_ARTIFACT',
-        validation.issues.map((issue) => `${issue.path}: ${issue.message}`).join(' '),
-      );
+    const artifact = acceptArtifact(request.body);
     await artifacts.put(artifact);
     return reply
       .status(201)
@@ -101,8 +87,9 @@ export async function buildServer(
 
   app.post('/api/sessions', async (request, reply) => {
     const body = CreateSessionSchema.parse(request.body);
-    const artifact = await artifacts.getById(body.artifactId);
-    if (!artifact) return reply.status(404).send({ error: 'ARTIFACT_NOT_FOUND' });
+    const storedArtifact = await artifacts.getById(body.artifactId);
+    if (!storedArtifact) return reply.status(404).send({ error: 'ARTIFACT_NOT_FOUND' });
+    const artifact = acceptArtifact(storedArtifact);
     sessionSequence += 1;
     const sessionId = `session-${sessionSequence}`;
     const joinCode = `PLAY${String(sessionSequence).padStart(2, '0')}`;
@@ -112,7 +99,7 @@ export async function buildServer(
       joinCode,
       artifact,
       host: { id: 'p1', name: body.hostName, isHost: true, required: true },
-      seed: body.seed ?? 1,
+      semanticSeed: semanticSeedFactory(),
       credentials: new Map([[credential, 'p1']]),
     });
     return reply
@@ -135,7 +122,7 @@ export async function buildServer(
         joinCode: lobby.joinCode,
         artifact: lobby.artifact,
         participants: [lobby.host, guest],
-        seed: lobby.seed,
+        semanticSeed: lobby.semanticSeed,
       });
       return reply.status(201).send({
         sessionId: lobby.sessionId,

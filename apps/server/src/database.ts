@@ -1,6 +1,7 @@
 import { Kysely, PostgresDialect, type Generated } from 'kysely';
 import { Pool } from 'pg';
-import { parseGameArtifact, type GameArtifact } from '@traquenard/game-ir';
+import type { GameArtifact } from '@traquenard/game-ir';
+import { acceptArtifact } from '@traquenard/game-validator';
 
 export interface Database {
   game_artifact: {
@@ -43,15 +44,15 @@ export class InMemoryArtifactRepository implements ArtifactRepository {
   readonly #byVersion = new Map<string, GameArtifact>();
 
   public put(artifact: GameArtifact): Promise<void> {
-    const key = versionKey(artifact);
-    const existing = this.#byVersion.get(key);
-    if (existing && existing.contentHash !== artifact.contentHash)
-      return Promise.reject(
-        new ArtifactVersionConflictError(artifact.definition.gameId, artifact.gameVersion),
-      );
-    this.#byVersion.set(key, artifact);
-    this.#byId.set(artifact.artifactId, artifact);
-    return Promise.resolve();
+    return Promise.resolve().then(() => {
+      const accepted = acceptArtifact(artifact);
+      const key = versionKey(accepted);
+      const existing = this.#byVersion.get(key);
+      if (existing && existing.contentHash !== accepted.contentHash)
+        throw new ArtifactVersionConflictError(accepted.definition.gameId, accepted.gameVersion);
+      this.#byVersion.set(key, accepted);
+      this.#byId.set(accepted.artifactId, accepted);
+    });
   }
 
   public getById(artifactId: string): Promise<GameArtifact | undefined> {
@@ -63,28 +64,29 @@ export class PostgresArtifactRepository implements ArtifactRepository {
   public constructor(private readonly database: Kysely<Database>) {}
 
   public async put(artifact: GameArtifact): Promise<void> {
+    const accepted = acceptArtifact(artifact);
     await this.database
       .insertInto('game_artifact')
       .values({
-        artifact_id: artifact.artifactId,
-        game_id: artifact.definition.gameId,
-        game_version: artifact.gameVersion,
-        content_hash: artifact.contentHash,
-        payload: artifact,
+        artifact_id: accepted.artifactId,
+        game_id: accepted.definition.gameId,
+        game_version: accepted.gameVersion,
+        content_hash: accepted.contentHash,
+        payload: accepted,
       })
       .onConflict((conflict) => conflict.columns(['game_id', 'game_version']).doNothing())
       .execute();
     const existing = await this.database
       .selectFrom('game_artifact')
       .select(['artifact_id', 'content_hash'])
-      .where('game_id', '=', artifact.definition.gameId)
-      .where('game_version', '=', artifact.gameVersion)
+      .where('game_id', '=', accepted.definition.gameId)
+      .where('game_version', '=', accepted.gameVersion)
       .executeTakeFirstOrThrow();
     if (
-      existing.artifact_id !== artifact.artifactId ||
-      existing.content_hash !== artifact.contentHash
+      existing.artifact_id !== accepted.artifactId ||
+      existing.content_hash !== accepted.contentHash
     )
-      throw new ArtifactVersionConflictError(artifact.definition.gameId, artifact.gameVersion);
+      throw new ArtifactVersionConflictError(accepted.definition.gameId, accepted.gameVersion);
   }
 
   public async getById(artifactId: string): Promise<GameArtifact | undefined> {
@@ -93,7 +95,7 @@ export class PostgresArtifactRepository implements ArtifactRepository {
       .select('payload')
       .where('artifact_id', '=', artifactId)
       .executeTakeFirst();
-    return row ? parseGameArtifact(row.payload) : undefined;
+    return row ? acceptArtifact(row.payload) : undefined;
   }
 }
 

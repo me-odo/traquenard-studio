@@ -1,4 +1,4 @@
-import type { Expression, Value } from '@traquenard/game-ir';
+import { canonicalJson, type Expression, type Value } from '@traquenard/game-ir';
 import { EngineError } from './errors.js';
 import { readVariable } from './state.js';
 import type { EngineState } from './types.js';
@@ -30,6 +30,8 @@ export function evaluate(
         canonicalValue(evaluate(expression.left, state, locals, scopeId)) ===
         canonicalValue(evaluate(expression.right, state, locals, scopeId))
       );
+    default:
+      return assertNever(expression);
   }
 }
 
@@ -39,5 +41,9 @@ export function asCollection(value: Value | undefined): readonly Value[] {
 }
 
 function canonicalValue(value: Value): string {
-  return JSON.stringify(value);
+  return canonicalJson(value);
+}
+
+function assertNever(value: never): never {
+  throw new EngineError('INVALID_ARTIFACT', `Unhandled expression: ${JSON.stringify(value)}`);
 }

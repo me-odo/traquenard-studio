@@ -2,6 +2,7 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import {
   IR_VERSION,
+  contentHash,
   parseGameArtifact,
   publishArtifact,
   t,
@@ -10,6 +11,21 @@ import {
 import { validateDefinition } from '@traquenard/game-validator';
 
 describe('Game IR properties', () => {
+  it('keeps canonical hashes invariant under record insertion order', () => {
+    fc.assert(
+      fc.property(
+        fc.dictionary(fc.constantFrom('a', 'z', 'Z', 'ä', 'é', '東京', 'e\u0301'), fc.integer(), {
+          minKeys: 2,
+        }),
+        (record) => {
+          const reversed = Object.fromEntries(Object.entries(record).reverse());
+          expect(contentHash(reversed)).toBe(contentHash(record));
+        },
+      ),
+      { seed: 20260907 },
+    );
+  });
+
   it('preserves valid artifacts through JSON serialization', () => {
     fc.assert(
       fc.property(

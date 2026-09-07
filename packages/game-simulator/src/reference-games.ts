@@ -23,8 +23,8 @@ const turnComposite = {
         id: 'turn-private',
         kind: 'present' as const,
         audience: {
-          kind: 'participants' as const,
-          ids: literal(['p2'], t.collection(t.participant)),
+          kind: 'participant' as const,
+          id: variable('participant'),
         },
         message: literal('You were selected.', t.string),
         privacy: 'private' as const,

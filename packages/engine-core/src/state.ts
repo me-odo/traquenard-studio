@@ -1,12 +1,12 @@
 import type { GameArtifact, TypeRef, Value } from '@traquenard/game-ir';
 import { EngineError } from './errors.js';
-import { normalizeSeed } from './rng.js';
+import { createRngState } from './rng.js';
 import type { EngineState, Participant } from './types.js';
 
 export function createEngineState(
   artifact: GameArtifact,
   participants: readonly Participant[],
-  seed: number,
+  semanticSeed: string,
 ): EngineState {
   const variables = Object.fromEntries(
     artifact.definition.variables.map((item) => [
@@ -22,7 +22,7 @@ export function createEngineState(
     nextScopeId: 1,
     frames: [{ kind: 'operation', operation: artifact.definition.root, locals: {} }],
     pending: {},
-    rngState: normalizeSeed(seed),
+    rngState: createRngState(semanticSeed),
     logicalTime: 0,
     completed: false,
   };
@@ -36,7 +36,12 @@ export function readVariable(
   if (!scopeId) return state.variables[name];
   const scope = state.scopes[scopeId];
   if (!scope) throw new EngineError('UNKNOWN_SCOPE', `Unknown composite scope '${scopeId}'.`);
-  return scope[name];
+  if (scope.outputNames.includes(name) && !scope.assignedOutputNames.includes(name))
+    throw new EngineError(
+      'UNASSIGNED_COMPOSITE_OUTPUT',
+      `Composite output '${name}' was read before assignment.`,
+    );
+  return scope.values[name];
 }
 
 export function setVariable(
@@ -48,12 +53,25 @@ export function setVariable(
   if (scopeId) {
     const scope = state.scopes[scopeId];
     if (!scope) throw new EngineError('UNKNOWN_SCOPE', `Unknown composite scope '${scopeId}'.`);
-    if (!(name in scope))
+    if (!(name in scope.values) && !scope.outputNames.includes(name))
       throw new EngineError(
         'UNKNOWN_VARIABLE',
         `Unknown variable '${name}' in composite scope '${scopeId}'.`,
       );
-    return { ...state, scopes: { ...state.scopes, [scopeId]: { ...scope, [name]: value } } };
+    return {
+      ...state,
+      scopes: {
+        ...state.scopes,
+        [scopeId]: {
+          ...scope,
+          values: { ...scope.values, [name]: value },
+          assignedOutputNames:
+            scope.outputNames.includes(name) && !scope.assignedOutputNames.includes(name)
+              ? [...scope.assignedOutputNames, name]
+              : scope.assignedOutputNames,
+        },
+      },
+    };
   }
   if (!(name in state.variables))
     throw new EngineError('UNKNOWN_VARIABLE', `Unknown variable '${name}'.`);
@@ -73,5 +91,11 @@ export function defaultValue(type: TypeRef): Value {
       return { id: '', suit: '', rank: '' };
     case 'collection':
       return [];
+    default:
+      return assertNever(type);
   }
+}
+
+function assertNever(value: never): never {
+  throw new EngineError('INVALID_ARTIFACT', `Unhandled type: ${JSON.stringify(value)}`);
 }

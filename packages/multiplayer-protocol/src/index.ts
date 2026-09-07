@@ -14,9 +14,10 @@ export const ClientCommandSchema = z.discriminatedUnion('kind', [
 
 export type ClientCommand = z.infer<typeof ClientCommandSchema>;
 
-export const CreateSessionSchema = z.object({
-  artifactId: z.string().min(1),
-  hostName: z.string().min(1).max(60),
-  seed: z.number().int().optional(),
-});
+export const CreateSessionSchema = z
+  .object({
+    artifactId: z.string().min(1),
+    hostName: z.string().min(1).max(60),
+  })
+  .strict();
 export const JoinSessionSchema = z.object({ name: z.string().min(1).max(60) });
