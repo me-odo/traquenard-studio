@@ -6,7 +6,7 @@
   font-synthesis: none;
 }
 
-/* Issue #2 editor-first reference prototype. The older lab rules above remain scoped to
+/* Issue #2 editor-first reference prototype. Older lab rules elsewhere remain scoped to
    historical class names; this layer deliberately uses a compact application surface. */
 .editor-first-reference-lab {
   min-height: 100vh;

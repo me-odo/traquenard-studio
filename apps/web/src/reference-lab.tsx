@@ -50,7 +50,7 @@ const evidenceRows = [
 ] as const;
 
 export function ReferenceLab() {
-  const [fixtureKey, setFixtureKey] = useState<ReferenceFixtureKey>('current-player');
+  const [fixtureKey, setFixtureKey] = useState<ReferenceFixtureKey>('composite');
   const [viewport, setViewport] = useState<ReferenceViewport>('desktop');
   const [showProvenance, setShowProvenance] = useState(false);
   const [showOutline, setShowOutline] = useState(false);
@@ -378,9 +378,11 @@ export function ReferenceLab() {
             mobileScreen={mobileScreen}
             {...(selectedNode ? { selectedNode } : {})}
             {...(inspectedValue ? { inspectedValue } : {})}
-            {...((mobile && mobileScreen !== 'flow') || navigation.history.length
+            {...(mobile && mobileScreen !== 'flow'
               ? { onBack: screenBack }
-              : {})}
+              : navigation.history.length
+                ? { onBack: semanticBack }
+                : {})}
           />
 
           {showOutline ? (

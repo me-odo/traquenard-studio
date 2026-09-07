@@ -139,6 +139,42 @@ test('local inspection and explicit source navigation have different context eff
   ).toBeVisible();
 });
 
+test('desktop Composite source navigation restores the inspector and parent invocation', async ({
+  page,
+}) => {
+  await page.goto('/lab/references');
+  await page.getByText('Experiment settings').click();
+  await page.getByRole('button', { name: 'D · Composite' }).click();
+  const prototype = page.getByRole('region', { name: 'Scoped reference editor prototype' });
+  const breadcrumb = prototype.getByRole('navigation', { name: 'Semantic location' });
+  const invocation = prototype.locator('#ref-node-prepare-turn');
+
+  await invocation.click({ position: { x: 20, y: 20 } });
+  await invocation.getByRole('button', { name: 'Enter Composite' }).click();
+  await expect(prototype.locator('#ref-node-prepare-draw')).toBeVisible();
+
+  await prototype.getByRole('button', { name: /Inspect Deck reference for FROM/ }).click();
+  await expect(
+    prototype.getByRole('region', { name: 'Reference inspector for Deck' }),
+  ).toBeVisible();
+  await prototype.getByRole('button', { name: 'Go to source' }).click();
+  await expect(
+    prototype.getByRole('region', { name: 'Source context for Questions Deck' }),
+  ).toBeVisible();
+
+  await prototype.getByRole('button', { name: /Back/ }).click();
+  await expect(
+    prototype.getByRole('region', { name: 'Reference inspector for Deck' }),
+  ).toBeVisible();
+  await prototype.getByRole('button', { name: 'Close reference inspector' }).click();
+  await expect(breadcrumb.getByText('Prepare Turn', { exact: true })).toBeVisible();
+  await prototype.getByRole('button', { name: /Back/ }).click();
+  await expect(prototype.locator('#ref-node-prepare-turn')).toHaveAttribute(
+    'aria-label',
+    'Prepare Turn step, selected',
+  );
+});
+
 test('mobile uses an exclusive flow, block, reference, source picker, source, and Composite stack', async ({
   page,
 }) => {
