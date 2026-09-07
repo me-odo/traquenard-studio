@@ -26,6 +26,7 @@ Open <http://localhost:5173>. The API listens on <http://localhost:3000>.
 | `pnpm test:integration`             | HTTP and package integration tests                     |
 | `pnpm test:e2e`                     | Playwright browser path                                |
 | `pnpm coverage`                     | Coverage with foundational thresholds                  |
+| `pnpm fix`                          | Apply safe ESLint fixes, then format with Prettier     |
 | `pnpm lint` / `pnpm format:check`   | Code and architecture / formatting checks              |
 | `pnpm typecheck` / `pnpm build`     | Strict types / production builds                       |
 | `pnpm check`                        | Complete checks without launching a browser            |
@@ -34,7 +35,12 @@ Open <http://localhost:5173>. The API listens on <http://localhost:3000>.
 | `pnpm db:migrate` / `pnpm db:reset` | Apply migration / reset local schema                   |
 | `pnpm clean`                        | Remove generated build and test output                 |
 
-During development, run targeted tests first and finish with local `pnpm verify`. Commit after it passes, push once at the end, and use CI only as independent confirmation.
+During development, run `pnpm fix`, `pnpm typecheck`, and targeted tests. Before committing or
+pushing, run local `pnpm verify`; use CI only as independent confirmation.
+
+VS Code users should install the recommended ESLint and Prettier extensions. The version-controlled
+workspace settings format and apply safe ESLint fixes on save, and use the repository's TypeScript
+version for editor diagnostics.
 
 The server defaults to an in-memory repository for a zero-infrastructure loop. PostgreSQL is the durable adapter target and its initial migration lives in `apps/server/migrations`; set `DATABASE_URL` after starting infrastructure. Both adapters reject different content for an existing `(gameId, gameVersion)` and accept identical retries. Never use production data with `db:reset`.
 
