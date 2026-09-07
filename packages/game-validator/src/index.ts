@@ -25,6 +25,11 @@ const primitive = (kind: 'string' | 'number' | 'boolean' | 'participant' | 'card
   kind,
 });
 
+interface SemanticScope {
+  readonly variables: Map<string, TypeRef>;
+  readonly allowsParticipantsContext: boolean;
+}
+
 export function sameType(left: TypeRef, right: TypeRef): boolean {
   return (
     left.kind === right.kind &&
@@ -74,11 +79,18 @@ export function validateDefinition(definition: GameDefinition): ValidationResult
     }
   }
 
-  visit(definition.root, 'root', variables);
+  visit(definition.root, 'root', {
+    variables,
+    allowsParticipantsContext: true,
+  });
   for (const [index, composite] of definition.composites.entries()) {
     validateCompositePorts(composite, index);
-    const scope = new Map(variables);
-    for (const port of [...composite.inputs, ...composite.outputs]) scope.set(port.name, port.type);
+    const scope: SemanticScope = {
+      variables: new Map(),
+      allowsParticipantsContext: false,
+    };
+    for (const port of [...composite.inputs, ...composite.outputs])
+      scope.variables.set(port.name, port.type);
     visit(composite.implementation, `composites.${index}.implementation`, scope);
   }
   return { valid: issues.length === 0, issues };
@@ -90,7 +102,7 @@ export function validateDefinition(definition: GameDefinition): ValidationResult
   function expressionType(
     expression: Expression,
     path: string,
-    scope: Map<string, TypeRef>,
+    scope: SemanticScope,
   ): TypeRef | undefined {
     switch (expression.kind) {
       case 'literal':
@@ -104,9 +116,17 @@ export function validateDefinition(definition: GameDefinition): ValidationResult
         }
         return expression.valueType;
       case 'participants':
+        if (!scope.allowsParticipantsContext) {
+          issue(
+            path,
+            'implicit_composite_context',
+            'Composite implementations must receive participants through a declared input.',
+          );
+          return undefined;
+        }
         return { kind: 'collection', element: primitive('participant') };
       case 'variable': {
-        const found = scope.get(expression.name);
+        const found = scope.variables.get(expression.name);
         if (!found)
           issue(
             path,
@@ -129,7 +149,7 @@ export function validateDefinition(definition: GameDefinition): ValidationResult
     expression: Expression,
     expected: TypeRef,
     path: string,
-    scope: Map<string, TypeRef>,
+    scope: SemanticScope,
   ): void {
     const actual = expressionType(expression, path, scope);
     if (actual && !sameType(actual, expected))
@@ -140,15 +160,15 @@ export function validateDefinition(definition: GameDefinition): ValidationResult
     name: string,
     expected: TypeRef | undefined,
     path: string,
-    scope: Map<string, TypeRef>,
+    scope: SemanticScope,
   ): void {
-    const target = scope.get(name);
+    const target = scope.variables.get(name);
     if (!target) issue(path, 'unknown_output', `Output variable '${name}' is not declared.`);
     else if (expected && !sameType(target, expected))
       issue(path, 'output_type_mismatch', `Output '${name}' must be ${showType(expected)}.`);
   }
 
-  function visit(operation: Operation, path: string, scope: Map<string, TypeRef>): void {
+  function visit(operation: Operation, path: string, scope: SemanticScope): void {
     if (nodeIds.has(operation.id))
       issue(path, 'duplicate_node_id', `Operation id '${operation.id}' is duplicated.`);
     nodeIds.add(operation.id);
@@ -157,7 +177,7 @@ export function validateDefinition(definition: GameDefinition): ValidationResult
         operation.steps.forEach((step, index) => visit(step, `${path}.steps.${index}`, scope));
         break;
       case 'set': {
-        const target = scope.get(operation.variable);
+        const target = scope.variables.get(operation.variable);
         if (!target)
           issue(
             `${path}.variable`,
@@ -198,8 +218,9 @@ export function validateDefinition(definition: GameDefinition): ValidationResult
         const source = expressionType(operation.collection, `${path}.collection`, scope);
         if (!source || source.kind !== 'collection')
           issue(`${path}.collection`, 'not_collection', 'Iteration requires a collection.');
-        const child = new Map(scope);
-        if (source?.kind === 'collection') child.set(operation.itemVariable, source.element);
+        const child = cloneScope(scope);
+        if (source?.kind === 'collection')
+          child.variables.set(operation.itemVariable, source.element);
         visit(operation.body, `${path}.body`, child);
         break;
       }
@@ -211,7 +232,7 @@ export function validateDefinition(definition: GameDefinition): ValidationResult
               'unsafe_parallel_v1',
               'IR v1 parallel branches must be independent input, timer, or presentation operations.',
             );
-          visit(branch, `${path}.branches.${index}`, new Map(scope));
+          visit(branch, `${path}.branches.${index}`, cloneScope(scope));
         }
         break;
       case 'time.wait':
@@ -226,7 +247,7 @@ export function validateDefinition(definition: GameDefinition): ValidationResult
         break;
       }
       case 'collection.draw': {
-        const source = scope.get(operation.collectionVariable);
+        const source = scope.variables.get(operation.collectionVariable);
         if (!source || source.kind !== 'collection')
           issue(
             `${path}.collectionVariable`,
@@ -272,7 +293,7 @@ export function validateDefinition(definition: GameDefinition): ValidationResult
     }
   }
 
-  function validateAudience(audience: Audience, path: string, scope: Map<string, TypeRef>): void {
+  function validateAudience(audience: Audience, path: string, scope: SemanticScope): void {
     if (audience.kind === 'participants')
       requireType(
         audience.ids,
@@ -280,6 +301,13 @@ export function validateDefinition(definition: GameDefinition): ValidationResult
         `${path}.ids`,
         scope,
       );
+  }
+
+  function cloneScope(scope: SemanticScope): SemanticScope {
+    return {
+      variables: new Map(scope.variables),
+      allowsParticipantsContext: scope.allowsParticipantsContext,
+    };
   }
 
   function validateCompositePorts(composite: CompositeDefinition, index: number): void {

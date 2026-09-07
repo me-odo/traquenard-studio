@@ -88,4 +88,36 @@ describe('authoritative sessions', () => {
       replaySession(options(), [{ source: 'client', participantId: wait.participantId, command }]),
     ).toEqual(once);
   });
+
+  it('deduplicates client and system inputs in separate typed namespaces', () => {
+    const initial = createSession(options(referenceGroupVote));
+    const systemInput = {
+      inputId: 'shared-raw-id',
+      kind: 'time.advance' as const,
+      milliseconds: 25,
+    };
+    const afterSystem = applySystemInput(initial, systemInput);
+    expect(applySystemInput(afterSystem, systemInput)).toBe(afterSystem);
+
+    const wait = Object.values(afterSystem.engine.pending).find(
+      (pending) => pending.kind === 'input' && pending.participantId === 'p1',
+    );
+    if (!wait || wait.kind !== 'input') throw new Error('Expected p1 input');
+    const clientCommand = {
+      protocolVersion: 1 as const,
+      commandId: 'shared-raw-id',
+      kind: 'input.submit' as const,
+      operationId: wait.operationId,
+      choice: wait.options[0]!,
+    };
+    const afterClient = applyClientCommand(afterSystem, 'p1', clientCommand);
+    expect(applyClientCommand(afterClient, 'p1', clientCommand)).toBe(afterClient);
+    expect(afterClient.processedInputs).toEqual([
+      { source: 'system', inputKind: 'time.advance', inputId: 'shared-raw-id' },
+      { source: 'client', participantId: 'p1', commandId: 'shared-raw-id' },
+    ]);
+    expect(replaySession(options(referenceGroupVote), afterClient.inputHistory)).toEqual(
+      afterClient,
+    );
+  });
 });

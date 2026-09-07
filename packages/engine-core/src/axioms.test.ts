@@ -174,7 +174,7 @@ describe('axiom registry and contracts', () => {
     expect(Object.keys(result.state.pending)).toEqual(['a', 'b']);
   });
 
-  it('invokes declarative composites and ends', () => {
+  it('reads declared inputs, writes declared outputs, and returns them to the caller', () => {
     const definition: GameDefinition = {
       irVersion: IR_VERSION,
       gameId: 'composite',
@@ -232,5 +232,119 @@ describe('axiom registry and contracts', () => {
     expect(result.state.completed).toBe(true);
     expect(result.state.variables.result).toBe('returned');
     expect(result.events.map((event) => event.kind)).toContain('presentation.emitted');
+  });
+
+  it('keeps nested composite scopes isolated through explicit bindings', () => {
+    const definition: GameDefinition = {
+      irVersion: IR_VERSION,
+      gameId: 'nested-composite',
+      title: 'Nested composite',
+      variables: [
+        { name: 'source', type: t.string, initial: 'through both scopes' },
+        { name: 'result', type: t.string },
+      ],
+      composites: [
+        {
+          id: 'inner',
+          version: 1,
+          name: 'Inner',
+          inputs: [{ name: 'innerInput', type: t.string }],
+          outputs: [{ name: 'innerOutput', type: t.string }],
+          implementation: {
+            id: 'inner-copy',
+            kind: 'set',
+            variable: 'innerOutput',
+            value: variable('innerInput'),
+          },
+        },
+        {
+          id: 'outer',
+          version: 1,
+          name: 'Outer',
+          inputs: [{ name: 'outerInput', type: t.string }],
+          outputs: [{ name: 'outerOutput', type: t.string }],
+          implementation: {
+            id: 'invoke-inner',
+            kind: 'composite.invoke',
+            compositeId: 'inner',
+            arguments: { innerInput: variable('outerInput') },
+            outputs: { innerOutput: 'outerOutput' },
+          },
+        },
+      ],
+      root: {
+        id: 'root',
+        kind: 'sequence',
+        steps: [
+          {
+            id: 'invoke-outer',
+            kind: 'composite.invoke',
+            compositeId: 'outer',
+            arguments: { outerInput: variable('source') },
+            outputs: { outerOutput: 'result' },
+          },
+          { id: 'end', kind: 'end' },
+        ],
+      },
+    };
+
+    const result = advanceExecution(
+      createEngineState(publishArtifact(definition, 1), participants, 1),
+    );
+    expect(result.state.variables).toMatchObject({
+      source: 'through both scopes',
+      result: 'through both scopes',
+    });
+    expect(result.state.scopes).toEqual({});
+  });
+
+  it.each([
+    {
+      name: 'read',
+      operation: {
+        id: 'implicit-read',
+        kind: 'present',
+        audience: { kind: 'everyone' },
+        message: variable('globalValue'),
+        privacy: 'public',
+      } as const,
+    },
+    {
+      name: 'mutation',
+      operation: {
+        id: 'implicit-write',
+        kind: 'set',
+        variable: 'globalValue',
+        value: literal('changed', t.string),
+      } as const,
+    },
+  ])('rejects an undeclared global $name at runtime', ({ operation }) => {
+    const definition: GameDefinition = {
+      irVersion: IR_VERSION,
+      gameId: 'runtime-encapsulation',
+      title: 'Runtime encapsulation',
+      variables: [{ name: 'globalValue', type: t.string, initial: 'original' }],
+      composites: [
+        {
+          id: 'isolated',
+          version: 1,
+          name: 'Isolated',
+          inputs: [],
+          outputs: [],
+          implementation: operation,
+        },
+      ],
+      root: {
+        id: 'invoke-isolated',
+        kind: 'composite.invoke',
+        compositeId: 'isolated',
+        arguments: {},
+        outputs: {},
+      },
+    };
+
+    expect(() =>
+      advanceExecution(createEngineState(publishArtifact(definition, 1), participants, 1)),
+    ).toThrow(/Unknown variable 'globalValue'/);
   });
 });

@@ -40,6 +40,18 @@ export type RecordedInput =
     }
   | { readonly source: 'system'; readonly input: SystemInput };
 
+export type ProcessedInputKey =
+  | {
+      readonly source: 'client';
+      readonly participantId: ParticipantId;
+      readonly commandId: string;
+    }
+  | {
+      readonly source: 'system';
+      readonly inputKind: SystemInput['kind'];
+      readonly inputId: string;
+    };
+
 export type RuntimeEventPayload =
   | SemanticEvent
   | {
@@ -72,7 +84,7 @@ export interface SessionState {
   readonly status: 'running' | 'paused' | 'completed';
   readonly engine: EngineState;
   readonly connectedParticipantIds: readonly ParticipantId[];
-  readonly processedInputIds: readonly string[];
+  readonly processedInputs: readonly ProcessedInputKey[];
   readonly inputHistory: readonly RecordedInput[];
   readonly eventLog: readonly RuntimeEvent[];
 }
@@ -103,7 +115,7 @@ export function createSession(options: {
     status: 'running',
     engine: createEngineState(options.artifact, options.participants, options.seed),
     connectedParticipantIds: options.participants.map((item) => item.id),
-    processedInputIds: [],
+    processedInputs: [],
     inputHistory: [],
     eventLog: [],
   };
@@ -127,11 +139,16 @@ export function applyClientCommand(
       'UNKNOWN_PARTICIPANT',
       'Authenticated participant is not part of this session.',
     );
-  if (session.processedInputIds.includes(command.commandId)) return session;
+  const processedKey: ProcessedInputKey = {
+    source: 'client',
+    participantId: authenticatedParticipantId,
+    commandId: command.commandId,
+  };
+  if (wasProcessed(session, processedKey)) return session;
   assertCanAdvance(session);
   if (session.status === 'paused')
     throw new EngineError('SESSION_PAUSED', 'Gameplay is frozen while the session is paused.');
-  let next = record(session, command.commandId, {
+  let next = record(session, processedKey, {
     source: 'client',
     participantId: authenticatedParticipantId,
     command,
@@ -155,11 +172,16 @@ export function applyClientCommand(
 }
 
 export function applySystemInput(session: SessionState, input: SystemInput): SessionState {
-  if (session.processedInputIds.includes(input.inputId)) return session;
+  const processedKey: ProcessedInputKey = {
+    source: 'system',
+    inputKind: input.kind,
+    inputId: input.inputId,
+  };
+  if (wasProcessed(session, processedKey)) return session;
   assertCanAdvance(session);
   if (session.status === 'paused' && input.kind === 'time.advance')
     throw new EngineError('SESSION_PAUSED', 'Logical time is frozen while the session is paused.');
-  let next = record(session, input.inputId, { source: 'system', input });
+  let next = record(session, processedKey, { source: 'system', input });
   switch (input.kind) {
     case 'time.advance':
       next = { ...next, engine: advanceLogicalTime(next.engine, input.milliseconds) };
@@ -264,10 +286,27 @@ function participantFor(session: SessionState, participantId: ParticipantId): Pa
   return participant;
 }
 
-function record(session: SessionState, id: string, input: RecordedInput): SessionState {
+function wasProcessed(session: SessionState, candidate: ProcessedInputKey): boolean {
+  return session.processedInputs.some((processed) => {
+    if (processed.source !== candidate.source) return false;
+    return processed.source === 'client' && candidate.source === 'client'
+      ? processed.participantId === candidate.participantId &&
+          processed.commandId === candidate.commandId
+      : processed.source === 'system' &&
+          candidate.source === 'system' &&
+          processed.inputKind === candidate.inputKind &&
+          processed.inputId === candidate.inputId;
+  });
+}
+
+function record(
+  session: SessionState,
+  processedKey: ProcessedInputKey,
+  input: RecordedInput,
+): SessionState {
   return {
     ...session,
-    processedInputIds: [...session.processedInputIds, id],
+    processedInputs: [...session.processedInputs, processedKey],
     inputHistory: [...session.inputHistory, input],
   };
 }

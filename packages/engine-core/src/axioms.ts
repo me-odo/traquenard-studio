@@ -139,8 +139,8 @@ export const axiomRegistry = {
     ['composite id', 'typed arguments'],
     ['typed bindings'],
     ['control'],
-    'Creates an isolated scope, executes the pinned implementation, then copies declared outputs.',
-    ['UNKNOWN_COMPOSITE'],
+    'Creates a scope containing only declared ports, executes the pinned implementation, then copies declared outputs to the caller scope.',
+    ['UNKNOWN_COMPOSITE', 'UNKNOWN_VARIABLE', 'IMPLICIT_COMPOSITE_CONTEXT'],
   ),
   end: descriptor(
     'end',

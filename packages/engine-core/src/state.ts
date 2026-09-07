@@ -33,7 +33,10 @@ export function readVariable(
   name: string,
   scopeId?: string,
 ): Value | undefined {
-  return (scopeId ? state.scopes[scopeId]?.[name] : undefined) ?? state.variables[name];
+  if (!scopeId) return state.variables[name];
+  const scope = state.scopes[scopeId];
+  if (!scope) throw new EngineError('UNKNOWN_SCOPE', `Unknown composite scope '${scopeId}'.`);
+  return scope[name];
 }
 
 export function setVariable(
@@ -42,9 +45,16 @@ export function setVariable(
   value: Value,
   scopeId?: string,
 ): EngineState {
-  const scope = scopeId ? state.scopes[scopeId] : undefined;
-  if (scope && name in scope)
-    return { ...state, scopes: { ...state.scopes, [scopeId!]: { ...scope, [name]: value } } };
+  if (scopeId) {
+    const scope = state.scopes[scopeId];
+    if (!scope) throw new EngineError('UNKNOWN_SCOPE', `Unknown composite scope '${scopeId}'.`);
+    if (!(name in scope))
+      throw new EngineError(
+        'UNKNOWN_VARIABLE',
+        `Unknown variable '${name}' in composite scope '${scopeId}'.`,
+      );
+    return { ...state, scopes: { ...state.scopes, [scopeId]: { ...scope, [name]: value } } };
+  }
   if (!(name in state.variables))
     throw new EngineError('UNKNOWN_VARIABLE', `Unknown variable '${name}'.`);
   return { ...state, variables: { ...state.variables, [name]: value } };

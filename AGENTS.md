@@ -9,3 +9,5 @@ Use a local-first loop: run targeted local tests while implementing, then a comp
 Architecture starts at `ARCHITECTURE.md`. Durable decisions live in `docs/adr`; unfinished work belongs in GitHub Issues, never local backlog files. Before creating an issue, follow `skills/github-issue-triage/SKILL.md` and search open and closed issues using several concepts.
 
 Reusable version-controlled skill sources live under `skills/`. Install them with `pnpm skills:install` because this environment reserves `.agents`; more specific nested `AGENTS.md` files override this map for their directory.
+
+Project setup may install or configure prerequisites required by this repository, but must not remove, upgrade, clean up, or reconfigure unrelated developer tooling unless strictly required and explicitly authorized. Do not run package-manager cleanup, uninstall unrelated packages, or edit shell profiles; suppress automatic cleanup where reasonably possible.

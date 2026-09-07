@@ -84,4 +84,86 @@ describe('static Game IR validation', () => {
       expect.arrayContaining([expect.objectContaining({ code: 'output_type_mismatch' })]),
     );
   });
+
+  it('rejects undeclared global reads and writes inside composite scopes', () => {
+    const invalid: GameDefinition = {
+      irVersion: IR_VERSION,
+      gameId: 'encapsulation',
+      title: 'Encapsulation',
+      variables: [{ name: 'globalMessage', type: t.string, initial: 'hidden dependency' }],
+      composites: [
+        {
+          id: 'reads-global',
+          version: 1,
+          name: 'Reads global',
+          inputs: [],
+          outputs: [],
+          implementation: {
+            id: 'read-global',
+            kind: 'present',
+            audience: { kind: 'everyone' },
+            message: { kind: 'variable', name: 'globalMessage' },
+            privacy: 'public',
+          },
+        },
+        {
+          id: 'writes-global',
+          version: 1,
+          name: 'Writes global',
+          inputs: [],
+          outputs: [],
+          implementation: {
+            id: 'write-global',
+            kind: 'set',
+            variable: 'globalMessage',
+            value: literal('mutated', t.string),
+          },
+        },
+      ],
+      root: { id: 'end', kind: 'end' },
+    };
+
+    const result = validateDefinition(invalid);
+    expect(result.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: 'composites.0.implementation.message',
+          code: 'unknown_variable',
+        }),
+        expect.objectContaining({
+          path: 'composites.1.implementation.variable',
+          code: 'unknown_variable',
+        }),
+      ]),
+    );
+  });
+
+  it('requires contextual participant access to cross an explicit composite input', () => {
+    const invalid: GameDefinition = {
+      irVersion: IR_VERSION,
+      gameId: 'context-encapsulation',
+      title: 'Context encapsulation',
+      variables: [],
+      composites: [
+        {
+          id: 'implicit-context',
+          version: 1,
+          name: 'Implicit context',
+          inputs: [],
+          outputs: [],
+          implementation: {
+            id: 'pick',
+            kind: 'random.select',
+            from: { kind: 'participants' },
+            output: 'selected',
+          },
+        },
+      ],
+      root: { id: 'end', kind: 'end' },
+    };
+
+    expect(validateDefinition(invalid).issues).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'implicit_composite_context' })]),
+    );
+  });
 });

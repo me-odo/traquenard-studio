@@ -1,6 +1,6 @@
 # Traquenard Studio
 
-A typed, deterministic party-game creation and execution platform. The initial vertical slice includes a constrained visual editor, immutable publishing, an authoritative session API, three executable reference games, headless simulation, private audience filtering, logical timers, and disconnect pause/resume.
+A typed, deterministic party-game creation and execution platform. The initial vertical slice includes a constrained visual editor, immutable publishing, an authoritative session API, three executable reference games, headless simulation, private audience filtering, logical timers, and runtime-level disconnect pause/resume semantics.
 
 ## Quick start
 
@@ -11,7 +11,7 @@ On macOS, the idempotent bootstrap activates the pinned Node release through nvm
 pnpm dev
 ```
 
-Use `./scripts/setup-local.sh --with-docker` to also start PostgreSQL, apply migrations, and run the database adapter integration contract. The script never edits shell profiles. GitHub CLI authentication and Docker remain optional for the zero-infrastructure loop.
+Use `./scripts/setup-local.sh --with-docker` to also start PostgreSQL, apply migrations, and run the database adapter integration contract. The script never invokes Homebrew, edits shell profiles, or removes or upgrades unrelated tooling. GitHub CLI authentication and Docker remain optional for the zero-infrastructure loop.
 
 Open <http://localhost:5173>. The API listens on <http://localhost:3000>.
 
@@ -37,5 +37,7 @@ Open <http://localhost:5173>. The API listens on <http://localhost:3000>.
 During development, run targeted tests first and finish with local `pnpm verify`. Commit after it passes, push once at the end, and use CI only as independent confirmation.
 
 The server defaults to an in-memory repository for a zero-infrastructure loop. PostgreSQL is the durable adapter target and its initial migration lives in `apps/server/migrations`; set `DATABASE_URL` after starting infrastructure. Both adapters reject different content for an existing `(gameId, gameVersion)` and accept identical retries. Never use production data with `db:reset`.
+
+Disconnect/reconnect pause behavior and timer freezing currently exist at the pure runtime level and in deterministic tests. The WebSocket adapter does not yet translate real connection lifecycle into trusted system inputs, and the server does not yet run a logical-time scheduler; that integration is tracked in [issue #3](https://github.com/me-odo/traquernard-studio/issues/3).
 
 See [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`AGENTS.md`](AGENTS.md) before semantic changes.

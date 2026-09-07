@@ -13,6 +13,11 @@ export function evaluate(
     case 'literal':
       return expression.value;
     case 'participants':
+      if (scopeId)
+        throw new EngineError(
+          'IMPLICIT_COMPOSITE_CONTEXT',
+          'Composite implementations must receive participants through a declared input.',
+        );
       return state.participants.map((item) => item.id);
     case 'variable': {
       const value = locals[expression.name] ?? readVariable(state, expression.name, scopeId);
