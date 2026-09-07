@@ -3,19 +3,24 @@ import {
   backReferenceNavigation,
   candidatesForInput,
   compositeForFixture,
+  deleteWorkingCopyBlock,
   enterComposite,
   initialReferenceNavigation,
+  initialReferenceWorkingCopy,
   navigateToReferenceSource,
   outlineForFixture,
   parentBinding,
   projectFixture,
+  projectWorkingCopy,
   referenceFixtureByKey,
   referenceFixtures,
   scopeLabel,
   sourceForReference,
   typeLabel,
   valuesForFixture,
+  workingCopyDiagnostics,
   type CompositeProjection,
+  type LabCandidate,
   type LabInput,
   type LabNode,
   type LabValue,
@@ -24,48 +29,52 @@ import {
   type ReferenceNavigationState,
   type ReferenceVariant,
   type ReferenceViewport,
+  type ReferenceWorkingCopy,
 } from './reference-lab-model.js';
 
 const variants: readonly {
-  readonly key: ReferenceVariant;
-  readonly label: string;
-  readonly hypothesis: string;
+  key: ReferenceVariant;
+  label: string;
+  question: string;
 }[] = [
   {
-    key: 'cables',
-    label: 'Persistent cables',
-    hypothesis: 'Always-visible edges make every source explicit enough to justify their space.',
-  },
-  {
     key: 'chips',
-    label: 'Typed inline chips',
-    hypothesis: 'Consumer-local identity and type labels preserve control-flow readability.',
+    label: 'Typed inline references',
+    question: 'Can local type, identity, scope, and source preview provide enough provenance?',
   },
   {
     key: 'navigation',
-    label: 'Chips + navigation',
-    hypothesis: 'Reversible source navigation can replace permanent long edges in nested flows.',
+    label: 'References + semantic navigation',
+    question: 'Does reversible context navigation clarify distant and nested references?',
   },
-] as const;
+];
 
 const rubric = [
-  ['Source discoverability', 'Strong', 'Mixed', 'Strong'],
-  ['Type clarity', 'Mixed', 'Strong', 'Strong'],
-  ['Same-type source disambiguation', 'Strong', 'Strong', 'Strong'],
-  ['Scope clarity', 'Mixed', 'Strong', 'Strong'],
-  ['Incompatible-value explanation', 'Mixed', 'Strong', 'Strong'],
-  ['Main control-flow readability', 'Weak', 'Strong', 'Strong'],
-  ['Cable / visual clutter', 'Weak', 'Strong', 'Strong'],
-  ['Multiple-consumer scalability', 'Weak', 'Strong', 'Strong'],
-  ['Long-flow scalability', 'Weak', 'Strong', 'Strong'],
-  ['Composite entry / exit clarity', 'Mixed', 'Mixed', 'Strong'],
-  ['Context preservation', 'Mixed', 'Mixed', 'Strong'],
-  ['Desktop usability', 'Mixed', 'Strong', 'Strong'],
-  ['Mobile usability', 'Weak', 'Strong', 'Strong'],
-  ['Keyboard accessibility', 'Mixed', 'Strong', 'Strong'],
-  ['Non-color dependence', 'Strong', 'Strong', 'Strong'],
-  ['Outline parity', 'Strong', 'Strong', 'Strong'],
-  ['Grouped-parallel compatibility', 'Weak', 'Strong', 'Strong'],
+  ['Source discoverability', 'Explicit, noisy', 'Preview', 'Dedicated context'],
+  ['Type clarity', 'Endpoint labels', 'Inline', 'Inline + source'],
+  ['Same-type identity', 'Named endpoints', 'Named chip', 'Named chip'],
+  ['Scope clarity', 'Endpoint labels', 'Inline label', 'Boundary + context'],
+  ['Invalid explanation', 'Picker text', 'Picker text', 'Picker text'],
+  ['Control readability', 'Overlay competes', 'Clear', 'Clear'],
+  ['Visual clutter', 'High', 'Low', 'Low'],
+  ['Multiple consumers', 'Many rows', 'Local', 'Local + source'],
+  ['Long-flow scale', 'Weak', 'Strong', 'Strong'],
+  ['Composite entry / exit', 'Not primary', 'Collapsed only', 'Focused + Back'],
+  ['Context preservation', 'Not applicable', 'No transition', 'History-backed'],
+  ['Desktop usability', 'Debug only', 'Strong', 'Strong'],
+  ['Mobile usability', 'Known limitation', 'Strong', 'Strong'],
+  ['Keyboard access', 'Toggle/list', 'Buttons', 'Buttons + focus'],
+  ['Non-color dependence', 'Text + endpoints', 'Text', 'Text + context'],
+  ['Outline parity', 'Same fixture', 'Same fixture', 'Same fixture'],
+  ['Grouped parallel fit', 'Weak', 'Strong', 'Strong'],
+] as const;
+
+const manualTests = [
+  ['1 · Same-type source', 'Switch Draw from Questions Deck to Challenges Deck.'],
+  ['2 · Source tracing', 'Find where Current Player came from and who consumes it.'],
+  ['3 · Composite', 'Enter Prepare Turn, follow Deck to its source, then return twice.'],
+  ['4 · Mobile', 'Repeat the Composite task at 390 px without horizontal scrolling.'],
+  ['5 · Deletion', 'Delete Choose Player, understand the dangling references, then reset.'],
 ] as const;
 
 interface PickerState {
@@ -79,28 +88,49 @@ interface InspectionState extends PickerState {
 
 export function ReferenceLab() {
   const [fixtureKey, setFixtureKey] = useState<ReferenceFixtureKey>('long-flow');
-  const [variant, setVariant] = useState<ReferenceVariant>('cables');
+  const [variant, setVariant] = useState<ReferenceVariant>('chips');
   const [viewport, setViewport] = useState<ReferenceViewport>('desktop');
   const [projection, setProjection] = useState<CompositeProjection>('collapsed');
+  const [showProvenance, setShowProvenance] = useState(false);
   const [navigation, setNavigation] = useState<ReferenceNavigationState>(() =>
     initialReferenceNavigation(),
+  );
+  const [workingCopy, setWorkingCopy] = useState<ReferenceWorkingCopy>(() =>
+    initialReferenceWorkingCopy(),
   );
   const [picker, setPicker] = useState<PickerState>();
   const [query, setQuery] = useState('');
   const [inspection, setInspection] = useState<InspectionState>();
   const [selection, setSelection] = useState<Readonly<Record<string, string>>>({});
+  const [selectedNodeId, setSelectedNodeId] = useState<string>();
+
   const fixture = referenceFixtureByKey(fixtureKey);
   const composite = compositeForFixture(fixture);
   const activeCompositeId = navigation.context === 'composite' ? navigation.compositeId : undefined;
   const nodes = useMemo(
-    () => projectFixture(fixture, activeCompositeId),
-    [fixture, activeCompositeId],
+    () => projectWorkingCopy(fixture, workingCopy, activeCompositeId),
+    [fixture, workingCopy, activeCompositeId],
+  );
+  const diagnostics = useMemo(
+    () => [
+      ...workingCopyDiagnostics(fixture, workingCopy),
+      ...fixture.definition.composites.flatMap((item) =>
+        workingCopyDiagnostics(fixture, workingCopy, item.id),
+      ),
+    ],
+    [fixture, workingCopy],
   );
   const currentVariant = variants.find((item) => item.key === variant)!;
+  const sourceContextValue =
+    navigation.context === 'source' && navigation.sourceValueId
+      ? sourceForReference(fixture, navigation.sourceValueId, navigation.sourceCompositeId)
+      : undefined;
 
-  const resetContext = (nextFixture: ReferenceFixture) => {
+  const resetInteraction = (nextFixture: ReferenceFixture) => {
     setNavigation(initialReferenceNavigation());
+    setWorkingCopy(initialReferenceWorkingCopy());
     setProjection('collapsed');
+    setShowProvenance(false);
     setPicker(
       nextFixture.defaultInput
         ? {
@@ -110,6 +140,7 @@ export function ReferenceLab() {
         : undefined,
     );
     setInspection(undefined);
+    setSelectedNodeId(undefined);
     setQuery('');
     setSelection({});
   };
@@ -117,31 +148,47 @@ export function ReferenceLab() {
   const chooseFixture = (key: ReferenceFixtureKey) => {
     const next = referenceFixtureByKey(key);
     setFixtureKey(key);
-    resetContext(next);
+    resetInteraction(next);
+  };
+
+  const chooseVariant = (next: ReferenceVariant) => {
+    setVariant(next);
+    setNavigation(initialReferenceNavigation());
+    setProjection('collapsed');
+    setInspection(undefined);
+    setPicker(undefined);
+    setSelectedNodeId(undefined);
   };
 
   const selectedId = (node: LabNode, input: LabInput): string =>
     selection[selectionKey(activeCompositeId, node.id, input.name)] ?? input.selectedValueId;
 
   const inspect = (node: LabNode, input: LabInput) => {
-    const valueId = selectedId(node, input);
-    setInspection({ nodeId: node.id, inputName: input.name, valueId });
+    setSelectedNodeId(node.id);
+    setInspection({
+      nodeId: node.id,
+      inputName: input.name,
+      valueId: selectedId(node, input),
+    });
     setPicker(undefined);
-    focusSoon(`ref-node-${sourceForReference(fixture, valueId, activeCompositeId)?.sourceNodeId}`);
+    focusSoon('reference-panel-heading');
   };
 
   const openPicker = (node: LabNode, input: LabInput) => {
+    setSelectedNodeId(node.id);
     setPicker({ nodeId: node.id, inputName: input.name });
     setInspection(undefined);
     setQuery('');
   };
 
   const enter = (node: LabNode) => {
-    if (!node.compositeId) return;
+    if (variant !== 'navigation' || !node.compositeId) return;
     setNavigation((current) => enterComposite(current, node.compositeId!, node.id));
     setProjection('focused');
     setPicker(undefined);
     setInspection(undefined);
+    setSelectedNodeId(undefined);
+    focusSoon('reference-context-heading');
   };
 
   const back = () => {
@@ -150,39 +197,76 @@ export function ReferenceLab() {
     setProjection(next.context === 'composite' ? 'focused' : 'collapsed');
     setInspection(undefined);
     setPicker(undefined);
-    focusSoon(next.focusedNodeId ? `ref-node-${next.focusedNodeId}` : undefined);
+    setSelectedNodeId(next.focusedNodeId);
+    focusSoon(next.focusedNodeId ? `ref-node-${next.focusedNodeId}` : 'reference-context-heading');
   };
 
   const goToSource = (value: LabValue) => {
-    const next = navigateToReferenceSource(fixture, navigation, value);
-    setNavigation(next);
-    setProjection(next.context === 'composite' ? 'focused' : 'collapsed');
+    setNavigation((current) => navigateToReferenceSource(fixture, current, value));
     setInspection(undefined);
-    focusSoon(`ref-node-${next.focusedNodeId ?? value.sourceNodeId}`);
+    setPicker(undefined);
+    setSelectedNodeId(undefined);
+    focusSoon('reference-context-heading');
+  };
+
+  const revealSource = (value: LabValue) => {
+    setNavigation((current) => ({ ...current, focusedNodeId: value.sourceNodeId }));
+    setInspection(undefined);
+    focusSoon(`ref-node-${value.sourceNodeId}`);
+  };
+
+  const deleteBlock = (node: LabNode) => {
+    setWorkingCopy((current) => deleteWorkingCopyBlock(current, node.id));
+    setSelectedNodeId(undefined);
+    setInspection(undefined);
+    setPicker(undefined);
+    focusSoon('working-copy-status');
+  };
+
+  const resetWorkingCopy = () => {
+    setWorkingCopy(initialReferenceWorkingCopy());
+    setSelection({});
+    setSelectedNodeId(undefined);
+    setInspection(undefined);
+    setPicker(undefined);
+    focusSoon('working-copy-status');
   };
 
   const setProjectionMode = (next: CompositeProjection) => {
-    setProjection(next);
     setPicker(undefined);
     setInspection(undefined);
-    if (next === 'focused' && composite) {
+    setSelectedNodeId(undefined);
+    if (next === 'focused' && composite && variant === 'navigation') {
       const invocation = projectFixture(fixture).find((node) => node.compositeId === composite.id);
-      if (invocation)
+      if (invocation) {
         setNavigation((current) => enterComposite(current, composite.id, invocation.id));
-    } else if (next === 'collapsed') setNavigation(initialReferenceNavigation());
+        setProjection('focused');
+        focusSoon('reference-context-heading');
+      }
+      return;
+    }
+    setProjection(next);
+    if (next === 'collapsed') setNavigation(initialReferenceNavigation());
   };
 
   const pickerNode = picker ? nodes.find((node) => node.id === picker.nodeId) : undefined;
   const pickerInput = pickerNode?.inputs.find((input) => input.name === picker?.inputName);
+  const inspectedNode = inspection
+    ? nodes.find((node) => node.id === inspection.nodeId)
+    : undefined;
+  const inspectedInput = inspectedNode?.inputs.find(
+    (input) => input.name === inspection?.inputName,
+  );
   const inspectedValue = inspection
     ? sourceForReference(fixture, inspection.valueId, activeCompositeId)
     : undefined;
+  const hasPanel = Boolean((pickerNode && pickerInput) || inspectedValue);
 
   return (
     <main className="references-lab">
       <header className="topbar references-topbar">
         <div>
-          <span className="eyebrow">VISUAL LAB · ISSUE #2</span>
+          <span className="eyebrow">VISUAL LAB · ISSUE #2 · REPAIR PASS</span>
           <h1>References without cable spaghetti</h1>
         </div>
         <nav aria-label="Lab navigation">
@@ -194,18 +278,18 @@ export function ReferenceLab() {
 
       <section className="references-hero">
         <div>
-          <span className="experiment-kicker">CONTROL FLOW ≠ DATA REFERENCES</span>
-          <h2>Where did this value come from—and is it valid here?</h2>
+          <span className="experiment-kicker">TWO PRIMARY HYPOTHESES</span>
+          <h2>Is local provenance enough—or should authors navigate?</h2>
           <p>
-            Six typed Game IR fixtures projected through three reference grammars. Selection, focus,
-            viewport, and navigation history remain presentation-only state.
+            Inline references keep authors in one flow. Semantic navigation deliberately replaces
+            that flow with a focused Composite or source context, then restores it with Back.
           </p>
         </div>
         <div className="hypothesis-card">
-          <span>FALSIFIABLE HYPOTHESIS</span>
+          <span>HUMAN FEEDBACK DRIVES THIS PASS</span>
           <p>
-            Typed chips plus reversible semantic navigation preserve source, type, identity, and
-            scope better than persistent edges once flows become long or nested.
+            Calmer vertical flow, obvious source selection, real focused navigation, mobile width
+            safety, consistent control arrows, and realistic working-copy deletion.
           </p>
         </div>
       </section>
@@ -222,25 +306,32 @@ export function ReferenceLab() {
             </button>
           ))}
         </ControlGroup>
-        <ControlGroup label="Reference grammar">
+        <ControlGroup label="Primary hypothesis">
           {variants.map((item) => (
             <button
               key={item.key}
               aria-pressed={variant === item.key}
-              onClick={() => setVariant(item.key)}
+              onClick={() => chooseVariant(item.key)}
             >
               {item.label}
             </button>
           ))}
         </ControlGroup>
-        <ControlGroup label="Composite projection">
+        <ControlGroup label="Projection">
           {(['collapsed', 'focused', 'outline'] as const).map((item) => (
             <button
               key={item}
               aria-pressed={projection === item}
-              disabled={item === 'focused' && !composite}
+              disabled={
+                (item === 'focused' && !composite) ||
+                (item === 'focused' && variant !== 'navigation')
+              }
               title={
-                item === 'focused' && !composite ? 'This fixture has no Composite.' : undefined
+                item === 'focused' && variant !== 'navigation'
+                  ? 'Focused semantic context belongs to the navigation hypothesis.'
+                  : item === 'focused' && !composite
+                    ? 'This fixture has no Composite.'
+                    : undefined
               }
               onClick={() => setProjectionMode(item)}
             >
@@ -248,12 +339,19 @@ export function ReferenceLab() {
             </button>
           ))}
         </ControlGroup>
-        <ControlGroup label="Viewport">
+        <ControlGroup label="Viewport and baseline">
           {(['desktop', 'mobile'] as const).map((item) => (
             <button key={item} aria-pressed={viewport === item} onClick={() => setViewport(item)}>
               {item === 'desktop' ? '▰ Desktop' : '▯ Mobile'}
             </button>
           ))}
+          <button
+            className="provenance-toggle"
+            aria-pressed={showProvenance}
+            onClick={() => setShowProvenance((shown) => !shown)}
+          >
+            Provenance overlay · {showProvenance ? 'On' : 'Off'}
+          </button>
         </ControlGroup>
       </section>
 
@@ -264,24 +362,30 @@ export function ReferenceLab() {
           <p>{fixture.description}</p>
         </div>
         <div>
-          <span className="eyebrow">STRESS QUESTION</span>
-          <p>{fixture.stress}</p>
+          <span className="eyebrow">PRIMARY QUESTION</span>
+          <p>{currentVariant.question}</p>
         </div>
         <div>
-          <span className="eyebrow">CURRENT GRAMMAR</span>
-          <strong>{currentVariant.label}</strong>
-          <p>{currentVariant.hypothesis}</p>
+          <span className="eyebrow">CONTEXT BEHAVIOR</span>
+          <strong>
+            {variant === 'chips' ? 'Stays in current flow' : 'History-backed navigation'}
+          </strong>
+          <p>
+            {variant === 'chips'
+              ? 'Inspect and change references locally; no semantic transition occurs.'
+              : 'Enter Composite and Go to source replace the active editing context.'}
+          </p>
         </div>
       </section>
 
       <section
-        className={`reference-prototype viewport-${viewport}`}
+        className={`reference-prototype repaired-reference-prototype viewport-${viewport}`}
         aria-label={`${currentVariant.label} reference prototype`}
       >
         <div className="reference-device-chrome" aria-hidden="true">
           <i />
           <span>
-            {viewport === 'mobile' ? '390 px focused navigation' : 'Desktop authoring canvas'}
+            {viewport === 'mobile' ? '390 px focused navigation' : 'Constrained desktop flow'}
           </span>
           <i />
         </div>
@@ -289,43 +393,81 @@ export function ReferenceLab() {
           fixture={fixture}
           navigation={navigation}
           compositeName={composite?.name}
+          sourceName={sourceContextValue?.label}
           onBack={navigation.history.length ? back : undefined}
         />
 
         {projection === 'outline' ? (
           <Outline fixture={fixture} />
         ) : (
-          <div className="reference-workbench">
+          <div className={`reference-workbench ${hasPanel ? 'has-panel' : ''}`}>
             <div className="reference-canvas-wrap">
-              {activeCompositeId && composite && (
-                <CompositeBoundary
-                  fixture={fixture}
-                  composite={composite}
-                  onInspect={(portName) => {
-                    const value = sourceForReference(fixture, portName, activeCompositeId);
-                    if (value)
-                      setInspection({
-                        nodeId: `${activeCompositeId}:boundary`,
-                        inputName: portName,
-                        valueId: portName,
-                      });
-                  }}
-                />
-              )}
-              <FlowProjection
-                fixture={fixture}
-                nodes={nodes}
-                variant={variant}
-                activeCompositeId={activeCompositeId}
-                selection={selection}
-                focusedNodeId={navigation.focusedNodeId}
-                onInspect={inspect}
-                onChoose={openPicker}
-                onEnter={enter}
+              <WorkingCopyStatus
+                workingCopy={workingCopy}
+                diagnostics={diagnostics}
+                onReset={resetWorkingCopy}
               />
+              {navigation.context === 'source' && sourceContextValue ? (
+                <SourceContextView
+                  fixture={fixture}
+                  value={sourceContextValue}
+                  sourceCompositeId={navigation.sourceCompositeId}
+                />
+              ) : (
+                <>
+                  <ContextHeading
+                    fixture={fixture}
+                    compositeName={activeCompositeId ? composite?.name : undefined}
+                    navigated={navigation.context === 'composite'}
+                  />
+                  {activeCompositeId && composite && (
+                    <CompositeBoundary
+                      fixture={fixture}
+                      composite={composite}
+                      onInspect={(portName) => {
+                        const value = sourceForReference(fixture, portName, activeCompositeId);
+                        if (value) {
+                          setInspection({
+                            nodeId: `${activeCompositeId}:boundary`,
+                            inputName: portName,
+                            valueId: portName,
+                          });
+                          focusSoon('reference-panel-heading');
+                        }
+                      }}
+                    />
+                  )}
+                  {showProvenance && (
+                    <ProvenanceOverlay
+                      fixture={fixture}
+                      nodes={nodes}
+                      compositeId={activeCompositeId}
+                      selection={selection}
+                    />
+                  )}
+                  <FlowProjection
+                    fixture={fixture}
+                    nodes={nodes}
+                    variant={variant}
+                    activeCompositeId={activeCompositeId}
+                    selection={selection}
+                    selectedNodeId={selectedNodeId}
+                    focusedNodeId={navigation.focusedNodeId}
+                    onInspect={inspect}
+                    onChoose={openPicker}
+                    onSelect={(node) => {
+                      setSelectedNodeId(node.id);
+                      setInspection(undefined);
+                      setPicker(undefined);
+                    }}
+                    onEnter={enter}
+                    onDelete={deleteBlock}
+                  />
+                </>
+              )}
             </div>
 
-            {(pickerNode && pickerInput) || inspectedValue ? (
+            {hasPanel && (
               <aside className="reference-side-panel" aria-label="Reference details">
                 {pickerNode && pickerInput ? (
                   <CandidatePicker
@@ -347,6 +489,7 @@ export function ReferenceLab() {
                         valueId: value.id,
                       });
                       setPicker(undefined);
+                      focusSoon('reference-panel-heading');
                     }}
                     onClose={() => setPicker(undefined)}
                   />
@@ -361,109 +504,91 @@ export function ReferenceLab() {
                         node.inputs.some((input) => selectedId(node, input) === inspectedValue.id),
                       ).length
                     }
-                    onGoToSource={() => {
-                      if (variant === 'navigation') goToSource(inspectedValue);
-                      else {
-                        setNavigation((current) => ({
-                          ...current,
-                          focusedNodeId: inspectedValue.sourceNodeId,
-                        }));
-                        setInspection(undefined);
-                        focusSoon(`ref-node-${inspectedValue.sourceNodeId}`);
-                      }
+                    canChange={Boolean(inspectedNode && inspectedInput)}
+                    onChange={() => {
+                      if (inspectedNode && inspectedInput)
+                        openPicker(inspectedNode, inspectedInput);
                     }}
+                    onGoToSource={() => goToSource(inspectedValue)}
+                    onReveal={() => revealSource(inspectedValue)}
                     onClose={() => setInspection(undefined)}
                   />
                 ) : null}
-              </aside>
-            ) : (
-              <aside className="reference-side-panel reference-guide" aria-label="Experiment guide">
-                <span className="eyebrow">TRY IT</span>
-                <h3>Select a reference</h3>
-                <p>
-                  Click a value at its consumer to inspect the producer, scope, type, and other
-                  uses. Choose the input label to search for another compatible value.
-                </p>
-                <ol>
-                  <li>Compare Questions Deck and Challenges Deck.</li>
-                  <li>Trace Current Player across the long flow.</li>
-                  <li>Open Prepare Turn and follow an input back to its parent.</li>
-                </ol>
               </aside>
             )}
           </div>
         )}
       </section>
 
-      <section className="parallel-reference-preview">
-        <div>
-          <span className="eyebrow">PRESENTATION STRESS PREVIEW · NOT EXECUTABLE IR V1</span>
-          <h2>Grouped parallel compatibility check</h2>
-          <p>
-            The leading Issue #1 direction can keep each branch collapsed while exposing typed
-            bindings. This does not add nested multi-operation parallel semantics.
-          </p>
-        </div>
-        <div className="parallel-reference-group">
-          <header>
-            <strong>Parallel · wait for all</strong>
-            <span>3 collapsed sub-flows</span>
-          </header>
-          {['Player A', 'Player B', 'Player C'].map((player) => (
-            <article key={player}>
-              <span>{player} · Prepare Turn</span>
-              <small>PLAYER · Participant · {player}</small>
-              <small>DECK · Collection&lt;Card&gt; · Questions Deck</small>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="reference-evaluation">
-        <div>
-          <span className="eyebrow">STRUCTURED DESIGN EVIDENCE · NOT USER RESEARCH</span>
-          <h2>Evaluation rubric</h2>
-          <p>
-            The long-flow and mobile projections make cable cost visible. Ratings describe this
-            prototype pass, not measured author performance.
-          </p>
-        </div>
-        <div className="reference-rubric-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>Criterion</th>
-                <th>Persistent cables</th>
-                <th>Typed chips</th>
-                <th>Chips + navigation</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rubric.map((row) => (
-                <tr key={row[0]}>
-                  {row.map((cell, index) => (
-                    <td
-                      key={`${row[0]}-${index}`}
-                      data-rating={index ? cell.toLowerCase() : undefined}
-                    >
-                      {cell}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="reference-recommendation">
-          <span>PROVISIONAL RECOMMENDATION</span>
-          <strong>CHIPS + SEMANTIC NAVIGATION LEADING</strong>
-          <p>
-            Typed chips protect the control sequence; source preview, breadcrumbs, and reversible
-            navigation recover the context that inline chips alone cannot fully explain.
-          </p>
-        </div>
-      </section>
+      <ManualRetest />
+      <ParallelPreview />
+      <Evaluation />
     </main>
+  );
+}
+
+function WorkingCopyStatus({
+  workingCopy,
+  diagnostics,
+  onReset,
+}: {
+  readonly workingCopy: ReferenceWorkingCopy;
+  readonly diagnostics: readonly { readonly code: string; readonly message: string }[];
+  readonly onReset: () => void;
+}) {
+  const changed = workingCopy.deletedNodeIds.length > 0;
+  return (
+    <section
+      id="working-copy-status"
+      className={`working-copy-status ${changed ? 'is-dirty' : ''}`}
+      tabIndex={-1}
+      aria-label="Lab working copy status"
+    >
+      <div>
+        <span>
+          LAB WORKING COPY · {changed ? 'TEMPORARILY INVALID' : 'MATCHES CANONICAL FIXTURE'}
+        </span>
+        <strong>
+          {changed
+            ? `${workingCopy.deletedNodeIds.length} block removed · canonical source unchanged`
+            : 'Safe to edit: all changes stay in this experiment'}
+        </strong>
+      </div>
+      <button disabled={!changed} onClick={onReset}>
+        Reset to canonical fixture
+      </button>
+      {diagnostics.length > 0 && (
+        <ul aria-label="Working copy diagnostics">
+          {diagnostics.map((diagnostic, index) => (
+            <li key={`${diagnostic.code}-${index}`}>{diagnostic.message}</li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function ContextHeading({
+  fixture,
+  compositeName,
+  navigated,
+}: {
+  readonly fixture: ReferenceFixture;
+  readonly compositeName?: string | undefined;
+  readonly navigated: boolean;
+}) {
+  return (
+    <header className={`reference-context-heading ${navigated ? 'is-navigated' : ''}`}>
+      <span>{navigated ? 'NAVIGATED SEMANTIC CONTEXT' : 'CURRENT FLOW CONTEXT'}</span>
+      <h2 id="reference-context-heading" tabIndex={-1}>
+        {compositeName ?? fixture.definition.title}
+      </h2>
+      <p>
+        {navigated
+          ? 'The parent flow is inactive. Only this Composite sub-flow is being edited.'
+          : 'Control executes from top to bottom. Data references stay inside each consumer.'}
+      </p>
+    </header>
   );
 }
 
@@ -473,61 +598,32 @@ function FlowProjection({
   variant,
   activeCompositeId,
   selection,
+  selectedNodeId,
   focusedNodeId,
   onInspect,
   onChoose,
+  onSelect,
   onEnter,
+  onDelete,
 }: {
   readonly fixture: ReferenceFixture;
   readonly nodes: readonly LabNode[];
   readonly variant: ReferenceVariant;
   readonly activeCompositeId?: string | undefined;
   readonly selection: Readonly<Record<string, string>>;
+  readonly selectedNodeId?: string | undefined;
   readonly focusedNodeId?: string | undefined;
   readonly onInspect: (node: LabNode, input: LabInput) => void;
   readonly onChoose: (node: LabNode, input: LabInput) => void;
+  readonly onSelect: (node: LabNode) => void;
   readonly onEnter: (node: LabNode) => void;
+  readonly onDelete: (node: LabNode) => void;
 }) {
   const values = valuesForFixture(fixture, activeCompositeId);
   const selectedId = (node: LabNode, input: LabInput) =>
     selection[selectionKey(activeCompositeId, node.id, input.name)] ?? input.selectedValueId;
-  const edges = nodes.flatMap((node) =>
-    node.inputs.flatMap((input) => {
-      const source = sourceForReference(fixture, selectedId(node, input), activeCompositeId);
-      return source ? [{ source, consumer: node, input }] : [];
-    }),
-  );
   return (
-    <div className={`reference-flow variant-${variant}`}>
-      {variant === 'cables' && (
-        <div className="cable-layer" aria-label={`${edges.length} persistent data connections`}>
-          <svg viewBox="0 0 1200 250" preserveAspectRatio="none" aria-hidden="true">
-            {edges.map((edge, index) => {
-              const sourceIndex = Math.max(
-                0,
-                nodes.findIndex((node) => node.id === edge.source.sourceNodeId) + 1,
-              );
-              const sourceX = 55 + sourceIndex * 78;
-              const targetX = 180 + edge.consumer.index * 72;
-              const height = 25 + (index % 5) * 32;
-              return (
-                <path
-                  key={`${edge.consumer.id}-${edge.input.name}`}
-                  d={`M ${sourceX} 220 C ${sourceX} ${height}, ${targetX} ${height}, ${targetX} 220`}
-                  className={`cable-type-${edge.source.type.kind}`}
-                />
-              );
-            })}
-          </svg>
-          <ul className="sr-only">
-            {edges.map((edge) => (
-              <li key={`${edge.consumer.id}-${edge.input.name}`}>
-                {edge.source.label} connects to {edge.consumer.label}, {edge.input.label}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+    <div className="reference-flow">
       <div className="reference-source-row">
         <SourceGroup
           id="runtime-values"
@@ -547,69 +643,165 @@ function FlowProjection({
           focused={focusedNodeId === 'game-values'}
         />
       </div>
-      <ol className="reference-control-flow" aria-label="Control flow">
-        {nodes.map((node, index) => (
-          <li key={node.id}>
-            {index > 0 && (
-              <span className="control-arrow" aria-label="then">
-                →
-              </span>
-            )}
-            <article
-              id={`ref-node-${node.id}`}
-              className={`reference-node ${focusedNodeId === node.id ? 'source-focused' : ''}`}
-              tabIndex={focusedNodeId === node.id ? 0 : -1}
-            >
-              <header>
-                <span>{String(index + 1).padStart(2, '0')} · CONTROL</span>
-                <code>{node.operation.kind}</code>
-              </header>
-              <h3>{node.label}</h3>
-              <p>{node.detail}</p>
-              <div className="node-ports">
-                {node.inputs.map((input) => {
-                  const value = sourceForReference(
-                    fixture,
-                    selectedId(node, input),
-                    activeCompositeId,
-                  );
-                  if (!value) return null;
-                  return (
-                    <div className="node-port" key={input.name}>
-                      <button className="port-label" onClick={() => onChoose(node, input)}>
-                        {input.label} <span>change</span>
-                      </button>
-                      <ReferenceChip
-                        value={value}
-                        variant={variant}
-                        onClick={() => onInspect(node, input)}
-                      />
-                    </div>
-                  );
-                })}
-                {node.outputIds.map((output) => {
-                  const value = sourceForReference(fixture, output, activeCompositeId);
-                  return value ? (
-                    <div className="node-output" key={output}>
-                      <span>OUTPUT</span>
-                      <strong>{value.label}</strong>
-                      <small>
-                        {typeLabel(value.type)} · {scopeLabel(value.scope)}
-                      </small>
-                    </div>
-                  ) : null;
-                })}
-              </div>
-              {node.compositeId && (
-                <button className="open-composite" onClick={() => onEnter(node)}>
-                  Open {node.label} →
-                </button>
+      <ol className="reference-control-flow" aria-label="Control flow, top to bottom">
+        {nodes.map((node, index) => {
+          const selected = node.id === selectedNodeId;
+          return (
+            <li key={node.id}>
+              {index > 0 && (
+                <span className="control-arrow" aria-label="Then">
+                  <small>THEN</small>↓
+                </span>
               )}
-            </article>
-          </li>
-        ))}
+              <article
+                id={`ref-node-${node.id}`}
+                className={`reference-node ${selected ? 'is-selected' : ''} ${focusedNodeId === node.id ? 'source-focused' : ''}`}
+                tabIndex={focusedNodeId === node.id ? 0 : -1}
+              >
+                <header>
+                  <span>{String(index + 1).padStart(2, '0')} · CONTROL BLOCK</span>
+                  <code>{node.operation.kind}</code>
+                </header>
+                <div className="node-title-row">
+                  <div>
+                    <h3>{node.label}</h3>
+                    <p>{node.detail}</p>
+                  </div>
+                  <button
+                    className="select-block"
+                    aria-pressed={selected}
+                    onClick={() => onSelect(node)}
+                  >
+                    {selected ? 'Selected' : 'Select block'}
+                  </button>
+                </div>
+                <div className="node-ports">
+                  {node.inputs.map((input) => {
+                    const value = sourceForReference(
+                      fixture,
+                      selectedId(node, input),
+                      activeCompositeId,
+                    );
+                    return value ? (
+                      <div className="node-port" key={input.name}>
+                        <span className="port-label">{input.label}</span>
+                        <ReferenceChip
+                          value={value}
+                          inputLabel={input.label}
+                          onClick={() => onInspect(node, input)}
+                        />
+                      </div>
+                    ) : null;
+                  })}
+                  {node.outputIds.map((output) => {
+                    const value = sourceForReference(fixture, output, activeCompositeId);
+                    return value ? (
+                      <div className="node-output" key={output}>
+                        <span>OUTPUT</span>
+                        <strong>{value.label}</strong>
+                        <small>
+                          {typeLabel(value.type)} · {scopeLabel(value.scope)}
+                        </small>
+                      </div>
+                    ) : null;
+                  })}
+                </div>
+                {selected && (
+                  <div className="block-actions" aria-label={`Actions for ${node.label}`}>
+                    <span>SELECTED BLOCK ACTIONS</span>
+                    <div>
+                      {node.inputs[0] && (
+                        <button onClick={() => onChoose(node, node.inputs[0]!)}>
+                          Change source
+                        </button>
+                      )}
+                      {node.compositeId && variant === 'navigation' && (
+                        <button className="enter-composite" onClick={() => onEnter(node)}>
+                          Enter Composite
+                        </button>
+                      )}
+                      {node.compositeId && variant === 'chips' && (
+                        <small>Inline hypothesis keeps this Composite collapsed.</small>
+                      )}
+                      <button className="delete-block" onClick={() => onDelete(node)}>
+                        Delete block
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </article>
+            </li>
+          );
+        })}
       </ol>
     </div>
+  );
+}
+
+function ProvenanceOverlay({
+  fixture,
+  nodes,
+  compositeId,
+  selection,
+}: {
+  readonly fixture: ReferenceFixture;
+  readonly nodes: readonly LabNode[];
+  readonly compositeId?: string | undefined;
+  readonly selection: Readonly<Record<string, string>>;
+}) {
+  const edges = nodes.flatMap((node) =>
+    node.inputs.flatMap((input) => {
+      const selected =
+        selection[selectionKey(compositeId, node.id, input.name)] ?? input.selectedValueId;
+      const source = sourceForReference(fixture, selected, compositeId);
+      return source ? [{ source, node, input }] : [];
+    }),
+  );
+  return (
+    <aside className="provenance-overlay" aria-label="Provenance cable baseline">
+      <header>
+        <div>
+          <span>DEBUG BASELINE · DATA REFERENCES</span>
+          <strong>Provenance overlay</strong>
+        </div>
+        <small>Dashed cables are data—not execution order.</small>
+      </header>
+      <div className="provenance-edges">
+        {edges.map((edge) => (
+          <div className="provenance-edge" key={`${edge.node.id}-${edge.input.name}`}>
+            <span className="data-endpoint source-endpoint">● SOURCE · {edge.source.label}</span>
+            <i aria-hidden="true">
+              <span>DATA</span>
+            </i>
+            <span className="data-endpoint consumer-endpoint">
+              ◇ INPUT · {edge.node.label} / {edge.input.label}
+            </span>
+          </div>
+        ))}
+      </div>
+    </aside>
+  );
+}
+
+function ReferenceChip({
+  value,
+  inputLabel,
+  onClick,
+}: {
+  readonly value: LabValue;
+  readonly inputLabel: string;
+  readonly onClick: () => void;
+}) {
+  return (
+    <button
+      className={`reference-chip scope-${value.scope}`}
+      onClick={onClick}
+      aria-label={`Inspect ${value.label} reference for ${inputLabel}`}
+    >
+      <strong>{value.label}</strong>
+      <span>{typeLabel(value.type)}</span>
+      <small>{scopeLabel(value.scope)} · Inspect</small>
+    </button>
   );
 }
 
@@ -643,30 +835,6 @@ function SourceGroup({
   );
 }
 
-function ReferenceChip({
-  value,
-  variant,
-  onClick,
-}: {
-  readonly value: LabValue;
-  readonly variant: ReferenceVariant;
-  readonly onClick: () => void;
-}) {
-  return (
-    <button
-      className={`reference-chip scope-${value.scope}`}
-      onClick={onClick}
-      title={`Inspect source: ${value.sourceLabel}`}
-    >
-      <span>
-        {variant === 'cables' ? '● ' : ''}
-        {typeLabel(value.type)} · {value.label}
-      </span>
-      {variant !== 'cables' && <small>{scopeLabel(value.scope)}</small>}
-    </button>
-  );
-}
-
 function CandidatePicker({
   fixture,
   node,
@@ -692,23 +860,55 @@ function CandidatePicker({
       <header>
         <div>
           <span className="eyebrow">
-            CHOOSE VALUE FOR {node.label.toUpperCase()} → {input.label}
+            {node.label.toUpperCase()} · {input.label}
           </span>
-          <h3>Requires {typeLabel(input.type)}</h3>
+          <h3>Choose source</h3>
+          <p>Requires {typeLabel(input.type)}</p>
         </div>
-        <button aria-label="Close value picker" onClick={onClose}>
+        <button aria-label="Close source picker" onClick={onClose}>
           ×
         </button>
       </header>
       <label>
-        Search available values
+        Search by name, type, or scope
         <input
           autoFocus
           value={query}
           onChange={(event) => onQuery(event.target.value)}
-          placeholder="Name, type, or scope…"
+          placeholder="Search available values…"
         />
       </label>
+      <CandidateGroup
+        label="COMPATIBLE"
+        candidates={candidates.filter((item) => item.compatible)}
+        onSelect={onSelect}
+      />
+      <CandidateGroup
+        label="UNAVAILABLE"
+        candidates={candidates.filter((item) => !item.compatible)}
+        onSelect={onSelect}
+      />
+      <p className="candidate-note">
+        Compatibility uses Game IR TypeRef equality. Names identify values; they never override
+        type.
+      </p>
+    </div>
+  );
+}
+
+function CandidateGroup({
+  label,
+  candidates,
+  onSelect,
+}: {
+  readonly label: string;
+  readonly candidates: readonly LabCandidate[];
+  readonly onSelect: (value: LabValue) => void;
+}) {
+  if (!candidates.length) return null;
+  return (
+    <section className="candidate-group">
+      <h4>{label}</h4>
       <div className="candidate-list">
         {candidates.map((candidate) => (
           <button
@@ -723,20 +923,15 @@ function CandidatePicker({
               </small>
             </span>
             <span className={candidate.compatible ? 'candidate-valid' : 'candidate-invalid'}>
-              {candidate.compatible ? 'Compatible' : 'Unavailable'}
+              {candidate.compatible ? '✓ Compatible' : '× Unavailable'}
             </span>
             {!candidate.compatible && (
               <small className="candidate-reason">{candidate.reason}</small>
             )}
           </button>
         ))}
-        {!candidates.length && <p>No available value matches this search.</p>}
       </div>
-      <p className="candidate-note">
-        Compatibility uses Game IR TypeRef equality. Names identify values; they never override
-        type.
-      </p>
-    </div>
+    </section>
   );
 }
 
@@ -746,7 +941,10 @@ function SourceInspector({
   compositeId,
   variant,
   consumerCount,
+  canChange,
+  onChange,
   onGoToSource,
+  onReveal,
   onClose,
 }: {
   readonly fixture: ReferenceFixture;
@@ -754,7 +952,10 @@ function SourceInspector({
   readonly compositeId?: string | undefined;
   readonly variant: ReferenceVariant;
   readonly consumerCount: number;
+  readonly canChange: boolean;
+  readonly onChange: () => void;
   readonly onGoToSource: () => void;
+  readonly onReveal: () => void;
   readonly onClose: () => void;
 }) {
   const parent =
@@ -765,13 +966,20 @@ function SourceInspector({
     <div className="source-inspector">
       <header>
         <div>
-          <span className="eyebrow">REFERENCE SOURCE</span>
-          <h3>{value.label}</h3>
+          <span className="eyebrow">SELECTED REFERENCE</span>
+          <h3 id="reference-panel-heading" tabIndex={-1}>
+            {value.label}
+          </h3>
         </div>
-        <button aria-label="Close source details" onClick={onClose}>
+        <button aria-label="Close reference details" onClick={onClose}>
           ×
         </button>
       </header>
+      <div className={`context-effect context-effect-${variant}`}>
+        {variant === 'chips'
+          ? 'INLINE INSPECTION · semantic context will not change'
+          : 'NAVIGATION AVAILABLE · Go to source opens another semantic context'}
+      </div>
       <dl>
         <div>
           <dt>Type</dt>
@@ -791,7 +999,7 @@ function SourceInspector({
         </div>
         <div>
           <dt>Uses here</dt>
-          <dd>{consumerCount} in this working projection</dd>
+          <dd>{consumerCount} in this working copy</dd>
         </div>
       </dl>
       {parent && (
@@ -803,16 +1011,16 @@ function SourceInspector({
           </small>
         </div>
       )}
-      {variant === 'navigation' ? (
-        <button className="primary" onClick={onGoToSource}>
-          Go to source
-        </button>
-      ) : (
-        <button onClick={onGoToSource}>
-          {variant === 'cables' ? 'Follow cable to source' : 'Temporarily reveal source'}
-        </button>
-      )}
-      <p>Use Back after navigation to return to the original consumer and editing context.</p>
+      <div className="inspector-actions">
+        {canChange && <button onClick={onChange}>Change source</button>}
+        {variant === 'navigation' ? (
+          <button className="primary" onClick={onGoToSource}>
+            Go to source
+          </button>
+        ) : (
+          <button onClick={onReveal}>Temporarily highlight producer</button>
+        )}
+      </div>
     </div>
   );
 }
@@ -829,9 +1037,9 @@ function CompositeBoundary({
   return (
     <section id={`ref-node-${composite.id}:boundary`} className="composite-boundary">
       <div>
-        <span className="eyebrow">SCOPE BOUNDARY</span>
+        <span className="eyebrow">DECLARED SCOPE BOUNDARY</span>
         <h3>{composite.name}</h3>
-        <p>Only declared ports are visible inside. Parent values are shown as explicit bindings.</p>
+        <p>Only declared ports are visible. Parent values cross through explicit bindings.</p>
       </div>
       <div className="boundary-ports">
         {composite.inputs.map((port) => {
@@ -840,7 +1048,7 @@ function CompositeBoundary({
             <button key={port.name} onClick={() => onInspect(port.name)}>
               <span>INPUT · {port.name}</span>
               <strong>{typeLabel(port.type)}</strong>
-              <small>From parent: {parent?.label ?? 'unbound'}</small>
+              <small>From parent: {parent?.label ?? 'unbound'} · Inspect</small>
             </button>
           );
         })}
@@ -856,26 +1064,100 @@ function CompositeBoundary({
   );
 }
 
+function SourceContextView({
+  fixture,
+  value,
+  sourceCompositeId,
+}: {
+  readonly fixture: ReferenceFixture;
+  readonly value: LabValue;
+  readonly sourceCompositeId?: string | undefined;
+}) {
+  const consumers = projectFixture(fixture, sourceCompositeId).filter((node) =>
+    node.inputs.some((input) => input.selectedValueId === value.id),
+  );
+  return (
+    <section className="source-context-view" aria-label={`Source context for ${value.label}`}>
+      <span>NAVIGATED SEMANTIC CONTEXT · SOURCE</span>
+      <h2 id="reference-context-heading" tabIndex={-1}>
+        {value.label}
+      </h2>
+      <p>The prior flow is inactive. Back returns to the exact reference inspection context.</p>
+      <article>
+        <header>
+          <span>VALUE SOURCE</span>
+          <strong>{typeLabel(value.type)}</strong>
+        </header>
+        <h3>{value.label}</h3>
+        <dl>
+          <div>
+            <dt>Semantic scope</dt>
+            <dd>{scopeLabel(value.scope)}</dd>
+          </div>
+          <div>
+            <dt>Produced by</dt>
+            <dd>{value.sourceLabel}</dd>
+          </div>
+          <div>
+            <dt>Source identifier</dt>
+            <dd>{value.id}</dd>
+          </div>
+        </dl>
+      </article>
+      <div className="source-consumers">
+        <span>KNOWN CONSUMERS IN THIS CONTEXT</span>
+        {consumers.length ? (
+          <ul>
+            {consumers.map((node) => (
+              <li key={node.id}>{node.label}</li>
+            ))}
+          </ul>
+        ) : (
+          <p>No other canonical consumers in this context.</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function Breadcrumb({
   fixture,
   navigation,
   compositeName,
+  sourceName,
   onBack,
 }: {
   readonly fixture: ReferenceFixture;
   readonly navigation: ReferenceNavigationState;
   readonly compositeName?: string | undefined;
+  readonly sourceName?: string | undefined;
   readonly onBack?: (() => void) | undefined;
 }) {
+  const current =
+    navigation.context === 'composite'
+      ? compositeName
+      : navigation.context === 'source'
+        ? sourceName
+        : undefined;
   return (
     <nav className="semantic-breadcrumb" aria-label="Semantic location">
-      {onBack && <button onClick={onBack}>← Back</button>}
+      {onBack && (
+        <button id="semantic-back" onClick={onBack}>
+          ← Back
+        </button>
+      )}
       <ol>
         <li>Game</li>
-        <li>{fixture.definition.title}</li>
-        {navigation.context === 'composite' && <li aria-current="page">{compositeName}</li>}
+        <li aria-current={current ? undefined : 'page'}>{fixture.definition.title}</li>
+        {current && <li aria-current="page">{current}</li>}
       </ol>
-      <span>{navigation.context === 'composite' ? 'Focused Composite' : 'Parent flow'}</span>
+      <span>
+        {navigation.context === 'source'
+          ? 'Source context'
+          : navigation.context === 'composite'
+            ? 'Focused Composite'
+            : 'Parent flow'}
+      </span>
     </nav>
   );
 }
@@ -888,6 +1170,92 @@ function Outline({ fixture }: { readonly fixture: ReferenceFixture }) {
         <h3>Same semantic fixture, no canvas geometry</h3>
       </header>
       <pre>{outlineForFixture(fixture).join('\n')}</pre>
+    </section>
+  );
+}
+
+function ManualRetest() {
+  return (
+    <section className="manual-retest">
+      <div>
+        <span className="eyebrow">STRUCTURED HUMAN INSPECTION · NOT FORMAL RESEARCH</span>
+        <h2>Five tasks for the next review</h2>
+        <p>
+          Try each without reading implementation notes. Record hesitation, wrong turns, and
+          overflow.
+        </p>
+      </div>
+      <ol>
+        {manualTests.map(([title, instruction]) => (
+          <li key={title}>
+            <strong>{title}</strong>
+            <span>{instruction}</span>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+function ParallelPreview() {
+  return (
+    <section className="parallel-reference-preview">
+      <div>
+        <span className="eyebrow">PRESENTATION STRESS PREVIEW — NOT EXECUTABLE IR V1</span>
+        <h2>Grouped parallel compatibility check</h2>
+        <p>Kept unchanged in scope: collapsed branch cards expose typed bindings.</p>
+      </div>
+      <div className="parallel-reference-group">
+        <header>
+          <strong>Parallel · wait for all</strong>
+          <span>3 collapsed sub-flows</span>
+        </header>
+        {['Player A', 'Player B', 'Player C'].map((player) => (
+          <article key={player}>
+            <span>{player} · Prepare Turn</span>
+            <small>PLAYER · Participant · {player}</small>
+            <small>DECK · Collection&lt;Card&gt; · Questions Deck</small>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function Evaluation() {
+  return (
+    <section className="reference-evaluation">
+      <div>
+        <span className="eyebrow">REPAIRED COMPARISON</span>
+        <h2>Evidence rubric</h2>
+        <p>The overlay is now a debug baseline; only inline and navigation remain candidates.</p>
+      </div>
+      <div className="reference-rubric-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Criterion</th>
+              <th>Provenance overlay</th>
+              <th>Inline</th>
+              <th>Navigation</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rubric.map((row) => (
+              <tr key={row[0]}>
+                {row.map((cell, index) => (
+                  <td key={`${row[0]}-${index}`}>{cell}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="reference-recommendation">
+        <span>STATUS AFTER REPAIR</span>
+        <strong>TWO DISTINCT HYPOTHESES · HUMAN RETEST REQUIRED</strong>
+        <p>Do not adopt until this pass is cross-checked with the richer Issue #1 flow.</p>
+      </div>
     </section>
   );
 }
@@ -911,7 +1279,6 @@ function selectionKey(compositeId: string | undefined, nodeId: string, inputName
   return `${compositeId ?? 'parent'}:${nodeId}:${inputName}`;
 }
 
-function focusSoon(id: string | undefined): void {
-  if (!id) return;
+function focusSoon(id: string): void {
   window.setTimeout(() => document.getElementById(id)?.focus(), 0);
 }

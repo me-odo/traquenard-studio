@@ -6,13 +6,17 @@ import {
   canonicalFixtureJson,
   consumersOfReference,
   enterComposite,
+  deleteWorkingCopyBlock,
+  initialReferenceWorkingCopy,
   initialReferenceNavigation,
   navigateToReferenceSource,
   outlineForFixture,
   projectFixture,
+  projectWorkingCopy,
   referenceFixtureByKey,
   referenceFixtures,
   sourceForReference,
+  workingCopyDiagnostics,
 } from './reference-lab-model.js';
 
 describe('references lab semantic fixtures', () => {
@@ -62,7 +66,11 @@ describe('references lab semantic fixtures', () => {
     const entered = enterComposite(initialReferenceNavigation(), 'turn.prepare', 'prepare-turn');
     const deckInput = sourceForReference(fixture, 'deck', 'turn.prepare')!;
     const atSource = navigateToReferenceSource(fixture, entered, deckInput);
-    expect(atSource).toMatchObject({ context: 'parent', focusedNodeId: 'game-values' });
+    expect(atSource).toMatchObject({
+      context: 'source',
+      sourceValueId: 'questionsDeck',
+      focusedNodeId: 'game-values',
+    });
     const returnedToComposite = backReferenceNavigation(atSource);
     expect(returnedToComposite).toMatchObject({
       context: 'composite',
@@ -70,6 +78,28 @@ describe('references lab semantic fixtures', () => {
     });
     const returnedToParent = backReferenceNavigation(returnedToComposite);
     expect(returnedToParent).toMatchObject({ context: 'parent', focusedNodeId: 'prepare-turn' });
+  });
+
+  it('deletes only from a lab working copy and reports dangling references until reset', () => {
+    const fixture = referenceFixtureByKey('long-flow');
+    const canonicalBefore = canonicalFixtureJson(fixture);
+    const deleted = deleteWorkingCopyBlock(initialReferenceWorkingCopy(), 'choose-player');
+
+    expect(projectWorkingCopy(fixture, deleted).some((node) => node.id === 'choose-player')).toBe(
+      false,
+    );
+    expect(
+      workingCopyDiagnostics(fixture, deleted).some(
+        (diagnostic) =>
+          diagnostic.code === 'dangling_reference' &&
+          diagnostic.nodeId === 'prepare-turn' &&
+          diagnostic.message.includes('Current Player'),
+      ),
+    ).toBe(true);
+    expect(canonicalFixtureJson(fixture)).toBe(canonicalBefore);
+    expect(projectWorkingCopy(fixture, initialReferenceWorkingCopy())).toHaveLength(
+      projectFixture(fixture).length,
+    );
   });
 
   it('keeps canonical IR unchanged while candidates are inspected and selected in projection state', () => {

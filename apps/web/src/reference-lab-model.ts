@@ -20,7 +20,7 @@ import {
 
 export type ReferenceFixtureKey =
   'two-decks' | 'current-player' | 'drawn-card' | 'composite' | 'incompatible' | 'long-flow';
-export type ReferenceVariant = 'cables' | 'chips' | 'navigation';
+export type ReferenceVariant = 'chips' | 'navigation';
 export type ReferenceViewport = 'desktop' | 'mobile';
 export type CompositeProjection = 'collapsed' | 'focused' | 'outline';
 export type ReferenceScope =
@@ -67,10 +67,22 @@ export interface LabCandidate extends ReferenceCompatibility {
 }
 
 export interface ReferenceNavigationState {
-  readonly context: 'parent' | 'composite';
+  readonly context: 'parent' | 'composite' | 'source';
   readonly compositeId?: string;
+  readonly sourceValueId?: string;
+  readonly sourceCompositeId?: string;
   readonly focusedNodeId?: string;
   readonly history: readonly Omit<ReferenceNavigationState, 'history'>[];
+}
+
+export interface ReferenceWorkingCopy {
+  readonly deletedNodeIds: readonly string[];
+}
+
+export interface WorkingCopyDiagnostic {
+  readonly code: 'dangling_reference' | 'working_copy_changed';
+  readonly nodeId: string;
+  readonly message: string;
 }
 
 const questions: readonly Card[] = [
@@ -665,6 +677,70 @@ export function referenceEdges(
   );
 }
 
+export function initialReferenceWorkingCopy(): ReferenceWorkingCopy {
+  return { deletedNodeIds: [] };
+}
+
+export function deleteWorkingCopyBlock(
+  workingCopy: ReferenceWorkingCopy,
+  nodeId: string,
+): ReferenceWorkingCopy {
+  return workingCopy.deletedNodeIds.includes(nodeId)
+    ? workingCopy
+    : { deletedNodeIds: [...workingCopy.deletedNodeIds, nodeId] };
+}
+
+export function projectWorkingCopy(
+  fixture: ReferenceFixture,
+  workingCopy: ReferenceWorkingCopy,
+  compositeId?: string,
+): readonly LabNode[] {
+  return projectFixture(fixture, compositeId).filter(
+    (node) => !workingCopy.deletedNodeIds.includes(node.id),
+  );
+}
+
+export function workingCopyDiagnostics(
+  fixture: ReferenceFixture,
+  workingCopy: ReferenceWorkingCopy,
+  compositeId?: string,
+): readonly WorkingCopyDiagnostic[] {
+  if (workingCopy.deletedNodeIds.length === 0) return [];
+  const nodes = projectFixture(fixture, compositeId);
+  const deleted = new Set(workingCopy.deletedNodeIds);
+  const relevantDeleted = nodes.filter((node) => deleted.has(node.id));
+  if (relevantDeleted.length === 0) return [];
+  const deletedOutputs = new Map<string, LabNode>();
+  for (const node of relevantDeleted)
+    for (const output of node.outputIds) deletedOutputs.set(output, node);
+
+  const dangling = nodes.flatMap((node) =>
+    deleted.has(node.id)
+      ? []
+      : node.inputs.flatMap((input) => {
+          const producer = deletedOutputs.get(input.selectedValueId);
+          return producer
+            ? [
+                {
+                  code: 'dangling_reference' as const,
+                  nodeId: node.id,
+                  message: `${node.label} still references ${humanize(input.selectedValueId)}, produced by deleted block ${producer.label}.`,
+                },
+              ]
+            : [];
+        }),
+  );
+  return dangling.length
+    ? dangling
+    : [
+        {
+          code: 'working_copy_changed',
+          nodeId: workingCopy.deletedNodeIds.at(-1)!,
+          message: 'The lab working copy differs from the validated canonical fixture.',
+        },
+      ];
+}
+
 export function scopeLabel(scope: ReferenceScope): string {
   switch (scope) {
     case 'runtime':
@@ -731,13 +807,16 @@ export function navigateToReferenceSource(
   if (state.context === 'composite' && value.scope === 'composite-input' && state.compositeId) {
     const parent = parentBinding(fixture, state.compositeId, value.id);
     return {
-      context: 'parent',
+      context: 'source',
+      ...(parent ? { sourceValueId: parent.id } : { sourceValueId: value.id }),
       ...(parent ? { focusedNodeId: parent.sourceNodeId } : {}),
       history: [...state.history, frame],
     };
   }
   return {
-    ...state,
+    context: 'source',
+    sourceValueId: value.id,
+    ...(state.compositeId ? { sourceCompositeId: state.compositeId } : {}),
     focusedNodeId: value.sourceNodeId,
     history: [...state.history, frame],
   };
