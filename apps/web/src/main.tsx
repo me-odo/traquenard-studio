@@ -266,8 +266,8 @@ function VisualLab() {
       </a>
       <a className="experiment-link" href="/lab/references">
         <span className="eyebrow">AUTHORING EXPERIMENT · ISSUE #2</span>
-        <strong>Trace typed references through nested flows</strong>
-        <small>Persistent cables, inline chips, and reversible semantic navigation →</small>
+        <strong>Edit typed references through nested flows</strong>
+        <small>Direct reference chips, reversible navigation, and optional trace tools →</small>
       </a>
       <section className="lab-grid">
         <article>

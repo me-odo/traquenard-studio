@@ -77,6 +77,14 @@ export interface ReferenceNavigationState {
 
 export interface ReferenceWorkingCopy {
   readonly deletedNodeIds: readonly string[];
+  readonly addedNodes: readonly AddedWorkingCopyNode[];
+}
+
+export type ReferenceLabStepKind = 'present' | 'wait';
+
+export interface AddedWorkingCopyNode {
+  readonly compositeId?: string;
+  readonly node: LabNode;
 }
 
 export interface WorkingCopyDiagnostic {
@@ -678,16 +686,47 @@ export function referenceEdges(
 }
 
 export function initialReferenceWorkingCopy(): ReferenceWorkingCopy {
-  return { deletedNodeIds: [] };
+  return { deletedNodeIds: [], addedNodes: [] };
 }
 
 export function deleteWorkingCopyBlock(
   workingCopy: ReferenceWorkingCopy,
   nodeId: string,
 ): ReferenceWorkingCopy {
+  if (workingCopy.addedNodes.some((addition) => addition.node.id === nodeId)) {
+    return {
+      ...workingCopy,
+      addedNodes: workingCopy.addedNodes.filter((addition) => addition.node.id !== nodeId),
+    };
+  }
   return workingCopy.deletedNodeIds.includes(nodeId)
     ? workingCopy
-    : { deletedNodeIds: [...workingCopy.deletedNodeIds, nodeId] };
+    : { ...workingCopy, deletedNodeIds: [...workingCopy.deletedNodeIds, nodeId] };
+}
+
+export function addWorkingCopyBlock(
+  workingCopy: ReferenceWorkingCopy,
+  kind: ReferenceLabStepKind,
+  compositeId?: string,
+): ReferenceWorkingCopy {
+  const suffix = workingCopy.addedNodes.length + 1;
+  const operation =
+    kind === 'present'
+      ? announce(`lab-present-${suffix}`, 'New message')
+      : wait(`lab-wait-${suffix}`, 3000);
+  const node: LabNode = {
+    id: operation.id,
+    operation,
+    label: kind === 'present' ? 'Present' : 'Wait',
+    detail: kind === 'present' ? 'New public message.' : '3 seconds.',
+    inputs: [],
+    outputIds: [],
+    index: Number.MAX_SAFE_INTEGER,
+  };
+  return {
+    ...workingCopy,
+    addedNodes: [...workingCopy.addedNodes, { ...(compositeId ? { compositeId } : {}), node }],
+  };
 }
 
 export function projectWorkingCopy(
@@ -695,9 +734,20 @@ export function projectWorkingCopy(
   workingCopy: ReferenceWorkingCopy,
   compositeId?: string,
 ): readonly LabNode[] {
-  return projectFixture(fixture, compositeId).filter(
+  const canonical = projectFixture(fixture, compositeId).filter(
     (node) => !workingCopy.deletedNodeIds.includes(node.id),
   );
+  const additions = workingCopy.addedNodes
+    .filter(
+      (addition) =>
+        addition.compositeId === compositeId &&
+        !workingCopy.deletedNodeIds.includes(addition.node.id),
+    )
+    .map((addition, offset) => ({ ...addition.node, index: canonical.length + offset }));
+  const terminalIndex = canonical.findIndex((node) => node.operation.kind === 'end');
+  return terminalIndex < 0
+    ? [...canonical, ...additions]
+    : [...canonical.slice(0, terminalIndex), ...additions, ...canonical.slice(terminalIndex)];
 }
 
 export function workingCopyDiagnostics(
@@ -705,7 +755,17 @@ export function workingCopyDiagnostics(
   workingCopy: ReferenceWorkingCopy,
   compositeId?: string,
 ): readonly WorkingCopyDiagnostic[] {
-  if (workingCopy.deletedNodeIds.length === 0) return [];
+  if (workingCopy.deletedNodeIds.length === 0) {
+    return workingCopy.addedNodes.some((addition) => addition.compositeId === compositeId)
+      ? [
+          {
+            code: 'working_copy_changed',
+            nodeId: workingCopy.addedNodes.at(-1)!.node.id,
+            message: 'A step was added to the working copy. The canonical fixture is unchanged.',
+          },
+        ]
+      : [];
+  }
   const nodes = projectFixture(fixture, compositeId);
   const deleted = new Set(workingCopy.deletedNodeIds);
   const relevantDeleted = nodes.filter((node) => deleted.has(node.id));
@@ -864,7 +924,7 @@ function operationLabel(operation: Operation, composite?: CompositeDefinition): 
     case 'present':
       return operation.privacy === 'private' ? 'Present Privately' : 'Present';
     case 'time.wait':
-      return 'Continue After Wait';
+      return 'Wait';
     case 'composite.invoke':
       return composite?.name ?? 'Composite';
     case 'set':

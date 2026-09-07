@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { validateDefinition } from '@traquenard/game-validator';
 import {
+  addWorkingCopyBlock,
   backReferenceNavigation,
   candidatesForInput,
   canonicalFixtureJson,
@@ -110,6 +111,36 @@ describe('references lab semantic fixtures', () => {
     const challengeDeck = candidates.find((candidate) => candidate.value.id === 'challengesDeck')!;
     const projectionSelection = { [`${node.id}:from`]: challengeDeck.value.id };
     expect(projectionSelection).toEqual({ 'draw-question:from': 'challengesDeck' });
+    expect(canonicalFixtureJson(fixture)).toBe(before);
+  });
+
+  it('adds experiment-local steps before the terminal step without changing the canonical fixture', () => {
+    const fixture = referenceFixtureByKey('current-player');
+    const before = canonicalFixtureJson(fixture);
+    const added = addWorkingCopyBlock(initialReferenceWorkingCopy(), 'wait');
+    const projection = projectWorkingCopy(fixture, added);
+
+    expect(projection.at(-2)).toMatchObject({ label: 'Wait', operation: { kind: 'time.wait' } });
+    expect(projection.at(-1)?.operation.kind).toBe('end');
+    expect(
+      workingCopyDiagnostics(fixture, added).some(
+        (diagnostic) =>
+          diagnostic.code === 'working_copy_changed' &&
+          diagnostic.message.includes('canonical fixture is unchanged'),
+      ),
+    ).toBe(true);
+    expect(canonicalFixtureJson(fixture)).toBe(before);
+  });
+
+  it('can delete an added step without mutating the canonical fixture', () => {
+    const fixture = referenceFixtureByKey('two-decks');
+    const before = canonicalFixtureJson(fixture);
+    const added = addWorkingCopyBlock(initialReferenceWorkingCopy(), 'present');
+    const addedId = added.addedNodes[0]!.node.id;
+    const deleted = deleteWorkingCopyBlock(added, addedId);
+
+    expect(projectWorkingCopy(fixture, deleted).some((node) => node.id === addedId)).toBe(false);
+    expect(deleted).toEqual(initialReferenceWorkingCopy());
     expect(canonicalFixtureJson(fixture)).toBe(before);
   });
 });
