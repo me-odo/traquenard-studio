@@ -29,7 +29,8 @@
     "build": "pnpm typecheck && pnpm --filter @traquenard/web build && pnpm --filter @traquenard/server build",
     "docs:axioms": "tsx scripts/generate-axiom-docs.ts",
     "skills:install": "node scripts/install-skills.mjs",
-    "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm test:property && pnpm test:integration && pnpm coverage && pnpm build",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm test:property && pnpm test:integration && pnpm coverage && pnpm build",
+    "verify": "pnpm check && pnpm test:e2e",
     "clean": "node scripts/clean.mjs"
   },
   "devDependencies": {

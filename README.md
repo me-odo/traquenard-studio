@@ -28,7 +28,8 @@ Open <http://localhost:5173>. The API listens on <http://localhost:3000>.
 | `pnpm coverage`                     | Coverage with foundational thresholds                  |
 | `pnpm lint` / `pnpm format:check`   | Code and architecture / formatting checks              |
 | `pnpm typecheck` / `pnpm build`     | Strict types / production builds                       |
-| `pnpm verify`                       | Closest local equivalent to CI (E2E is separate)       |
+| `pnpm check`                        | Complete checks without launching a browser            |
+| `pnpm verify`                       | Full CI-equivalent checks, including Chromium E2E      |
 | `pnpm infra:up` / `pnpm infra:down` | Start/stop PostgreSQL                                  |
 | `pnpm db:migrate` / `pnpm db:reset` | Apply migration / reset local schema                   |
 | `pnpm clean`                        | Remove generated build and test output                 |
