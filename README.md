@@ -4,14 +4,14 @@ A typed, deterministic party-game creation and execution platform. The initial v
 
 ## Quick start
 
-Requires Node 24 LTS and pnpm 12.
+On macOS, the idempotent bootstrap activates the pinned Node release through nvm, enables the pinned pnpm through Corepack, installs dependencies, Chromium, and project Skills, diagnoses optional integrations, and runs the full local verification:
 
 ```bash
-corepack enable
-pnpm install
-pnpm run doctor
+./scripts/setup-local.sh
 pnpm dev
 ```
+
+Use `./scripts/setup-local.sh --with-docker` to also start PostgreSQL, apply migrations, and run the database adapter integration contract. The script never edits shell profiles. GitHub CLI authentication and Docker remain optional for the zero-infrastructure loop.
 
 Open <http://localhost:5173>. The API listens on <http://localhost:3000>.
 
@@ -34,6 +34,8 @@ Open <http://localhost:5173>. The API listens on <http://localhost:3000>.
 | `pnpm db:migrate` / `pnpm db:reset` | Apply migration / reset local schema                   |
 | `pnpm clean`                        | Remove generated build and test output                 |
 
-The server defaults to an in-memory repository for a zero-infrastructure loop. PostgreSQL is the durable adapter target and its initial migration lives in `apps/server/migrations`; set `DATABASE_URL` after starting infrastructure. Never use production data with `db:reset`.
+During development, run targeted tests first and finish with local `pnpm verify`. Commit after it passes, push once at the end, and use CI only as independent confirmation.
+
+The server defaults to an in-memory repository for a zero-infrastructure loop. PostgreSQL is the durable adapter target and its initial migration lives in `apps/server/migrations`; set `DATABASE_URL` after starting infrastructure. Both adapters reject different content for an existing `(gameId, gameVersion)` and accept identical retries. Never use production data with `db:reset`.
 
 See [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`AGENTS.md`](AGENTS.md) before semantic changes.
