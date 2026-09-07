@@ -5,7 +5,8 @@ import {
   referenceSequential,
 } from '../../game-simulator/src/reference-games.js';
 import {
-  applyCommand,
+  applyClientCommand,
+  applySystemInput,
   createSession,
   projectEvents,
   replaySession,
@@ -30,32 +31,28 @@ describe('authoritative sessions', () => {
   it('pauses globally, freezes timers, and resumes after reconnect', () => {
     let session = createSession(options(referenceCardRound));
     expect(session.engine.pending['round-timer']).toBeDefined();
-    session = applyCommand(session, {
-      protocolVersion: 1,
-      commandId: 'd1',
+    session = applySystemInput(session, {
+      inputId: 'd1',
       kind: 'participant.disconnected',
       participantId: 'p2',
     });
     expect(session.status).toBe('paused');
     expect(() =>
-      applyCommand(session, {
-        protocolVersion: 1,
-        commandId: 't1',
+      applySystemInput(session, {
+        inputId: 't1',
         kind: 'time.advance',
         milliseconds: 9999,
       }),
     ).toThrow('frozen');
     expect(session.engine.logicalTime).toBe(0);
-    session = applyCommand(session, {
-      protocolVersion: 1,
-      commandId: 'r1',
+    session = applySystemInput(session, {
+      inputId: 'r1',
       kind: 'participant.reconnected',
       participantId: 'p2',
     });
     expect(session.status).toBe('running');
-    session = applyCommand(session, {
-      protocolVersion: 1,
-      commandId: 't2',
+    session = applySystemInput(session, {
+      inputId: 't2',
       kind: 'time.advance',
       milliseconds: 3000,
     });
@@ -82,12 +79,13 @@ describe('authoritative sessions', () => {
       protocolVersion: 1 as const,
       commandId: 'once',
       kind: 'input.submit' as const,
-      participantId: wait.participantId,
       operationId: wait.operationId,
       choice: wait.options[0]!,
     };
-    const once = applyCommand(initial, command);
-    expect(applyCommand(once, command)).toBe(once);
-    expect(replaySession(options(), [command])).toEqual(once);
+    const once = applyClientCommand(initial, wait.participantId, command);
+    expect(applyClientCommand(once, wait.participantId, command)).toBe(once);
+    expect(
+      replaySession(options(), [{ source: 'client', participantId: wait.participantId, command }]),
+    ).toEqual(once);
   });
 });

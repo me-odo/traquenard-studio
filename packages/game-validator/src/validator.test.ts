@@ -38,4 +38,50 @@ describe('static Game IR validation', () => {
       expect.arrayContaining(['duplicate_node_id', 'unsafe_parallel_v1']),
     );
   });
+
+  it('rejects a literal whose runtime value contradicts its declared type', () => {
+    const invalid: GameDefinition = {
+      irVersion: IR_VERSION,
+      gameId: 'lying-literal',
+      title: 'Lying literal',
+      variables: [{ name: 'count', type: t.number }],
+      composites: [],
+      root: { id: 'set', kind: 'set', variable: 'count', value: literal('four', t.number) },
+    };
+    expect(validateDefinition(invalid).issues).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'literal_value_type_mismatch' })]),
+    );
+  });
+
+  it('validates composite interfaces and invocation bindings', () => {
+    const invalid: GameDefinition = {
+      irVersion: IR_VERSION,
+      gameId: 'composite-contract',
+      title: 'Composite contract',
+      variables: [
+        { name: 'participant', type: t.participant },
+        { name: 'answer', type: t.number },
+      ],
+      composites: [
+        {
+          id: 'ask',
+          version: 1,
+          name: 'Ask',
+          inputs: [{ name: 'target', type: t.participant }],
+          outputs: [{ name: 'response', type: t.string }],
+          implementation: { id: 'done', kind: 'end' },
+        },
+      ],
+      root: {
+        id: 'invoke',
+        kind: 'composite.invoke',
+        compositeId: 'ask',
+        arguments: { target: literal('p1', t.participant) },
+        outputs: { response: 'answer' },
+      },
+    };
+    expect(validateDefinition(invalid).issues).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'output_type_mismatch' })]),
+    );
+  });
 });

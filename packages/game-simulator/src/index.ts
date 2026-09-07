@@ -1,5 +1,6 @@
 import {
-  applyCommand,
+  applyClientCommand,
+  applySystemInput,
   createSession,
   type Participant,
   type SessionState,
@@ -33,11 +34,10 @@ export function simulateGame(artifact: GameArtifact, seed = 42): SimulationResul
       throw new Error(`Simulation stuck with ${session.engine.frames.length} remaining frame(s).`);
     for (const wait of waits) {
       if (wait.kind === 'input') {
-        session = applyCommand(session, {
+        session = applyClientCommand(session, wait.participantId, {
           protocolVersion: 1,
           commandId: `sim-${++command}`,
           kind: 'input.submit',
-          participantId: wait.participantId,
           operationId: wait.operationId,
           choice: wait.options[0]!,
         });
@@ -47,9 +47,8 @@ export function simulateGame(artifact: GameArtifact, seed = 42): SimulationResul
     const timers = Object.values(session.engine.pending).filter((wait) => wait.kind === 'timer');
     if (timers.length > 0) {
       const delta = Math.max(...timers.map((timer) => timer.dueAt - session.engine.logicalTime));
-      session = applyCommand(session, {
-        protocolVersion: 1,
-        commandId: `sim-${++command}`,
+      session = applySystemInput(session, {
+        inputId: `sim-${++command}`,
         kind: 'time.advance',
         milliseconds: delta,
       });
@@ -63,9 +62,8 @@ export function simulateGame(artifact: GameArtifact, seed = 42): SimulationResul
 export class FakeLogicalClock {
   public constructor(public session: SessionState) {}
   public advance(milliseconds: number): SessionState {
-    this.session = applyCommand(this.session, {
-      protocolVersion: 1,
-      commandId: `clock-${this.session.commandHistory.length + 1}`,
+    this.session = applySystemInput(this.session, {
+      inputId: `clock-${this.session.inputHistory.length + 1}`,
       kind: 'time.advance',
       milliseconds,
     });

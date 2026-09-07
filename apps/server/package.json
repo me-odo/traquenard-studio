@@ -11,6 +11,7 @@
     "@fastify/websocket": "11.3.0",
     "@traquenard/engine-runtime": "workspace:*",
     "@traquenard/game-ir": "workspace:*",
+    "@traquenard/game-validator": "workspace:*",
     "@traquenard/multiplayer-protocol": "workspace:*",
     "fastify": "5.12.3",
     "kysely": "0.29.5",

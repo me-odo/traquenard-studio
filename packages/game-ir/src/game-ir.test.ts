@@ -6,6 +6,7 @@ import {
   parseGameArtifact,
   publishArtifact,
   t,
+  valueConformsToType,
   type GameDefinition,
 } from './index.js';
 
@@ -24,7 +25,7 @@ describe('Game Artifact publishing', () => {
     expect(GameArtifactSchema.parse(artifact)).toEqual(artifact);
     expect(Object.isFrozen(artifact)).toBe(true);
     expect(Object.isFrozen(artifact.definition)).toBe(true);
-    expect(artifact.artifactId).toContain('tiny@1:fnv1a-');
+    expect(artifact.artifactId).toMatch(/^tiny@1:sha256-[a-f0-9]{64}$/);
   });
 
   it('canonicalizes object key ordering for stable hashes', () => {
@@ -45,5 +46,25 @@ describe('Game Artifact publishing', () => {
       kind: 'collection',
       element: { kind: 'collection', element: { kind: 'string' } },
     });
+  });
+
+  it('validates empty and nested collection values from their explicit element type', () => {
+    expect(valueConformsToType([], t.collection(t.number))).toBe(true);
+    expect(
+      valueConformsToType(
+        [
+          [1, 2],
+          [3, 4],
+        ],
+        t.collection(t.collection(t.number)),
+      ),
+    ).toBe(true);
+    expect(valueConformsToType([1, '2'], t.collection(t.number))).toBe(false);
+  });
+
+  it('rejects non-finite numbers and non-card objects at the literal boundary', () => {
+    expect(valueConformsToType(Number.POSITIVE_INFINITY, t.number)).toBe(false);
+    expect(valueConformsToType({ id: 'a', suit: 'hearts', rank: 'A' }, t.card)).toBe(true);
+    expect(valueConformsToType([], t.card)).toBe(false);
   });
 });

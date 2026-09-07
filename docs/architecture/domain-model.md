@@ -7,9 +7,9 @@ Package ownership:
 - `game-ir`: canonical values, expressions, operations, composites, artifacts, serialization.
 - `game-validator`: type/control/reference validation before publishing or execution.
 - `engine-core`: pure evaluation, RNG, axiom registry, and execution reduction.
-- `engine-runtime`: sessions, external commands, event log, pause/reconnect, audience projection.
-- `authoring-domain`: mutable drafts, layout, palette compatibility, compilation/publishing.
-- `multiplayer-protocol`: validated versioned wire commands.
+- `engine-runtime`: sessions, client intents, trusted system inputs, replay history, pause/reconnect, audience projection.
+- `authoring-domain`: mutable drafts, independent layout, typed slot compatibility, compilation/publishing.
+- `multiplayer-protocol`: validated versioned gameplay-intent wire commands.
 - `game-simulator`: reference games, fake clock, deterministic automated participants.
 
 The initial registry is generated at [`docs/generated/axioms.md`](../generated/axioms.md). New semantics require the project Axiom Design Review skill.

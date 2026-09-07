@@ -1,3 +1,5 @@
+import { sha256 } from '@noble/hashes/sha2.js';
+import { bytesToHex } from '@noble/hashes/utils.js';
 import { z } from 'zod';
 
 export const IR_VERSION = 1 as const;
@@ -8,6 +10,11 @@ export type TypeRef =
   | { kind: 'collection'; element: TypeRef };
 
 export type Value = string | number | boolean | Card | readonly Value[];
+
+export interface CompositePort {
+  readonly name: string;
+  readonly type: TypeRef;
+}
 
 export interface Card {
   readonly id: string;
@@ -81,7 +88,12 @@ export type Operation =
       collectionVariable: string;
       output: string;
     })
-  | (OperationBase & { kind: 'composite.invoke'; compositeId: string })
+  | (OperationBase & {
+      kind: 'composite.invoke';
+      compositeId: string;
+      arguments: Readonly<Record<string, Expression>>;
+      outputs: Readonly<Record<string, string>>;
+    })
   | (OperationBase & { kind: 'end' });
 
 export interface VariableDeclaration {
@@ -94,8 +106,8 @@ export interface CompositeDefinition {
   readonly id: string;
   readonly version: number;
   readonly name: string;
-  readonly inputs: readonly [];
-  readonly outputs: readonly [];
+  readonly inputs: readonly CompositePort[];
+  readonly outputs: readonly CompositePort[];
   readonly implementation: Operation;
 }
 
@@ -225,6 +237,8 @@ export const OperationSchema: z.ZodType<Operation> = z.lazy(() =>
       id: z.string().min(1),
       kind: z.literal('composite.invoke'),
       compositeId: z.string().min(1),
+      arguments: z.record(z.string().min(1), ExpressionSchema),
+      outputs: z.record(z.string().min(1), z.string().min(1)),
     }),
     z.object({ id: z.string().min(1), kind: z.literal('end') }),
   ]),
@@ -242,8 +256,8 @@ export const GameDefinitionSchema: z.ZodType<GameDefinition> = z.object({
       id: z.string().min(1),
       version: z.number().int().positive(),
       name: z.string().min(1),
-      inputs: z.tuple([]),
-      outputs: z.tuple([]),
+      inputs: z.array(z.object({ name: z.string().min(1), type: TypeRefSchema })),
+      outputs: z.array(z.object({ name: z.string().min(1), type: TypeRefSchema })),
       implementation: OperationSchema,
     }),
   ),
@@ -283,12 +297,37 @@ export function canonicalJson(value: unknown): string {
 }
 
 export function contentHash(value: unknown): string {
-  let hash = 0x811c9dc5;
-  for (const character of canonicalJson(value)) {
-    hash ^= character.charCodeAt(0);
-    hash = Math.imul(hash, 0x01000193);
+  const bytes = new TextEncoder().encode(canonicalJson(value));
+  return `sha256-${bytesToHex(sha256(bytes))}`;
+}
+
+export function valueConformsToType(value: Value, type: TypeRef): boolean {
+  switch (type.kind) {
+    case 'string':
+    case 'participant':
+      return typeof value === 'string';
+    case 'number':
+      return typeof value === 'number' && Number.isFinite(value);
+    case 'boolean':
+      return typeof value === 'boolean';
+    case 'card':
+      return isCard(value);
+    case 'collection':
+      return (
+        Array.isArray(value) &&
+        (value as readonly Value[]).every((item) => valueConformsToType(item, type.element))
+      );
   }
-  return `fnv1a-${(hash >>> 0).toString(16).padStart(8, '0')}`;
+}
+
+function isCard(value: unknown): value is Card {
+  if (Array.isArray(value) || typeof value !== 'object' || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.id === 'string' &&
+    typeof candidate.suit === 'string' &&
+    typeof candidate.rank === 'string'
+  );
 }
 
 export function publishArtifact(

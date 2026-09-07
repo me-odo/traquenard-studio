@@ -13,7 +13,7 @@ import {
   acceptInput,
   advanceExecution,
   advanceLogicalTime,
-  axiomRegistry,
+  axiomDescriptors,
   createEngineState,
   type Participant,
 } from './index.js';
@@ -37,8 +37,11 @@ function run(root: Operation, variables: GameDefinition['variables'] = []) {
 
 describe('axiom registry and contracts', () => {
   it('has one complete descriptor for every operation discriminator', () => {
-    expect(new Set(axiomRegistry.map((item) => item.id)).size).toBe(13);
-    for (const item of axiomRegistry) {
+    expect(new Set(axiomDescriptors.map((item) => item.id))).toHaveProperty(
+      'size',
+      axiomDescriptors.length,
+    );
+    for (const item of axiomDescriptors) {
       expect(item.version).toBe(1);
       expect(item.responsibility.length).toBeGreaterThan(0);
       expect(item.determinism).toContain('explicit');
@@ -176,20 +179,35 @@ describe('axiom registry and contracts', () => {
       irVersion: IR_VERSION,
       gameId: 'composite',
       title: 'Composite',
-      variables: [],
+      variables: [
+        { name: 'message', type: t.string, initial: 'outside' },
+        { name: 'result', type: t.string },
+      ],
       composites: [
         {
           id: 'round',
           version: 1,
           name: 'Round',
-          inputs: [],
-          outputs: [],
+          inputs: [{ name: 'message', type: t.string }],
+          outputs: [{ name: 'response', type: t.string }],
           implementation: {
-            id: 'inside',
-            kind: 'present',
-            audience: { kind: 'everyone' },
-            message: literal('inside', t.string),
-            privacy: 'public',
+            id: 'inside-sequence',
+            kind: 'sequence',
+            steps: [
+              {
+                id: 'inside',
+                kind: 'present',
+                audience: { kind: 'everyone' },
+                message: variable('message'),
+                privacy: 'public',
+              },
+              {
+                id: 'set-output',
+                kind: 'set',
+                variable: 'response',
+                value: literal('returned', t.string),
+              },
+            ],
           },
         },
       ],
@@ -197,7 +215,13 @@ describe('axiom registry and contracts', () => {
         id: 'root',
         kind: 'sequence',
         steps: [
-          { id: 'invoke', kind: 'composite.invoke', compositeId: 'round' },
+          {
+            id: 'invoke',
+            kind: 'composite.invoke',
+            compositeId: 'round',
+            arguments: { message: variable('message') },
+            outputs: { response: 'result' },
+          },
           { id: 'end', kind: 'end' },
         ],
       },
@@ -206,6 +230,7 @@ describe('axiom registry and contracts', () => {
       createEngineState(publishArtifact(definition, 1), participants, 1),
     );
     expect(result.state.completed).toBe(true);
+    expect(result.state.variables.result).toBe('returned');
     expect(result.events.map((event) => event.kind)).toContain('presentation.emitted');
   });
 });

@@ -26,6 +26,7 @@ function Studio() {
   const [query, setQuery] = useState('');
   const [artifactId, setArtifactId] = useState<string>();
   const [joinCode, setJoinCode] = useState<string>();
+  const [credential, setCredential] = useState<string>();
   const [events, setEvents] = useState<readonly ApiEvent[]>([]);
   const [status, setStatus] = useState('draft');
   const nextId = useRef(1);
@@ -62,8 +63,9 @@ function Studio() {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ artifactId, hostName: 'Host', seed: 1 }),
     });
-    const body = (await response.json()) as { joinCode: string };
+    const body = (await response.json()) as { joinCode: string; credential: string };
     setJoinCode(body.joinCode);
+    setCredential(body.credential);
     setStatus('waiting-for-player');
   };
 
@@ -74,24 +76,28 @@ function Studio() {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ name: 'Alex' }),
     });
-    const body = (await response.json()) as { status: string; events: ApiEvent[] };
+    const body = (await response.json()) as {
+      status: string;
+      events: ApiEvent[];
+      credential: string;
+    };
+    setCredential(body.credential);
     setEvents(body.events);
     setStatus(body.status);
   };
 
   const answer = async () => {
-    if (!joinCode) return;
+    if (!joinCode || !credential) return;
     const request = events.find((event) => event.kind === 'input.requested');
     if (!request) return;
     const options = request.payload.options as string[];
     const response = await fetch(`/api/sessions/${joinCode}/commands`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${credential}` },
       body: JSON.stringify({
         protocolVersion: 1,
         commandId: 'guest-choice-1',
         kind: 'input.submit',
-        participantId: 'p2',
         operationId: request.payload.operationId,
         choice: options[0],
       }),

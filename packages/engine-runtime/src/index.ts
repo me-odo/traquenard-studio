@@ -11,33 +11,34 @@ import {
 import type { GameArtifact, ParticipantId } from '@traquenard/game-ir';
 import { validateArtifact } from '@traquenard/game-validator';
 
-export type ExternalCommand =
+export interface ClientCommand {
+  readonly protocolVersion: 1;
+  readonly commandId: string;
+  readonly kind: 'input.submit';
+  readonly operationId: string;
+  readonly choice: string;
+}
+
+export type SystemInput =
+  | { readonly inputId: string; readonly kind: 'time.advance'; readonly milliseconds: number }
   | {
-      readonly protocolVersion: 1;
-      readonly commandId: string;
-      readonly kind: 'input.submit';
-      readonly participantId: ParticipantId;
-      readonly operationId: string;
-      readonly choice: string;
-    }
-  | {
-      readonly protocolVersion: 1;
-      readonly commandId: string;
-      readonly kind: 'time.advance';
-      readonly milliseconds: number;
-    }
-  | {
-      readonly protocolVersion: 1;
-      readonly commandId: string;
+      readonly inputId: string;
       readonly kind: 'participant.disconnected';
       readonly participantId: ParticipantId;
     }
   | {
-      readonly protocolVersion: 1;
-      readonly commandId: string;
+      readonly inputId: string;
       readonly kind: 'participant.reconnected';
       readonly participantId: ParticipantId;
     };
+
+export type RecordedInput =
+  | {
+      readonly source: 'client';
+      readonly participantId: ParticipantId;
+      readonly command: ClientCommand;
+    }
+  | { readonly source: 'system'; readonly input: SystemInput };
 
 export type RuntimeEventPayload =
   | SemanticEvent
@@ -71,8 +72,8 @@ export interface SessionState {
   readonly status: 'running' | 'paused' | 'completed';
   readonly engine: EngineState;
   readonly connectedParticipantIds: readonly ParticipantId[];
-  readonly processedCommandIds: readonly string[];
-  readonly commandHistory: readonly ExternalCommand[];
+  readonly processedInputIds: readonly string[];
+  readonly inputHistory: readonly RecordedInput[];
   readonly eventLog: readonly RuntimeEvent[];
 }
 
@@ -102,8 +103,8 @@ export function createSession(options: {
     status: 'running',
     engine: createEngineState(options.artifact, options.participants, options.seed),
     connectedParticipantIds: options.participants.map((item) => item.id),
-    processedCommandIds: [],
-    commandHistory: [],
+    processedInputIds: [],
+    inputHistory: [],
     eventLog: [],
   };
   return advanceAndAppend(
@@ -116,74 +117,77 @@ export function createSession(options: {
   );
 }
 
-export function applyCommand(session: SessionState, command: ExternalCommand): SessionState {
-  if (session.processedCommandIds.includes(command.commandId)) return session;
-  if (session.status === 'completed')
-    throw new EngineError('SESSION_COMPLETED', 'The session is already complete.');
-  if (
-    session.status === 'paused' &&
-    command.kind !== 'participant.reconnected' &&
-    command.kind !== 'participant.disconnected'
-  )
+export function applyClientCommand(
+  session: SessionState,
+  authenticatedParticipantId: ParticipantId,
+  command: ClientCommand,
+): SessionState {
+  if (!session.engine.participants.some((item) => item.id === authenticatedParticipantId))
     throw new EngineError(
-      'SESSION_PAUSED',
-      'Gameplay and logical time are frozen while the session is paused.',
+      'UNKNOWN_PARTICIPANT',
+      'Authenticated participant is not part of this session.',
     );
-
-  let next: SessionState = {
-    ...session,
-    processedCommandIds: [...session.processedCommandIds, command.commandId],
-    commandHistory: [...session.commandHistory, command],
+  if (session.processedInputIds.includes(command.commandId)) return session;
+  assertCanAdvance(session);
+  if (session.status === 'paused')
+    throw new EngineError('SESSION_PAUSED', 'Gameplay is frozen while the session is paused.');
+  let next = record(session, command.commandId, {
+    source: 'client',
+    participantId: authenticatedParticipantId,
+    command,
+  });
+  next = {
+    ...next,
+    engine: acceptInput(
+      next.engine,
+      command.operationId,
+      authenticatedParticipantId,
+      command.choice,
+    ),
   };
-  switch (command.kind) {
-    case 'input.submit':
-      next = {
-        ...next,
-        engine: acceptInput(
-          next.engine,
-          command.operationId,
-          command.participantId,
-          command.choice,
-        ),
-      };
-      next = append(next, {
-        kind: 'input.accepted',
-        operationId: command.operationId,
-        participantId: command.participantId,
-        choice: command.choice,
-      });
-      return advanceAndAppend(next);
+  next = append(next, {
+    kind: 'input.accepted',
+    operationId: command.operationId,
+    participantId: authenticatedParticipantId,
+    choice: command.choice,
+  });
+  return advanceAndAppend(next);
+}
+
+export function applySystemInput(session: SessionState, input: SystemInput): SessionState {
+  if (session.processedInputIds.includes(input.inputId)) return session;
+  assertCanAdvance(session);
+  if (session.status === 'paused' && input.kind === 'time.advance')
+    throw new EngineError('SESSION_PAUSED', 'Logical time is frozen while the session is paused.');
+  let next = record(session, input.inputId, { source: 'system', input });
+  switch (input.kind) {
     case 'time.advance':
-      next = { ...next, engine: advanceLogicalTime(next.engine, command.milliseconds) };
-      next = append(next, { kind: 'time.advanced', milliseconds: command.milliseconds });
-      return advanceAndAppend(next);
+      next = { ...next, engine: advanceLogicalTime(next.engine, input.milliseconds) };
+      return advanceAndAppend(
+        append(next, { kind: 'time.advanced', milliseconds: input.milliseconds }),
+      );
     case 'participant.disconnected': {
-      if (!next.engine.participants.some((item) => item.id === command.participantId))
-        throw new EngineError('UNKNOWN_PARTICIPANT', 'Participant is not part of this session.');
-      const connected = next.connectedParticipantIds.filter((id) => id !== command.participantId);
+      const participant = participantFor(next, input.participantId);
+      const connected = next.connectedParticipantIds.filter((id) => id !== input.participantId);
       next = append(
         { ...next, connectedParticipantIds: connected },
-        { kind: 'participant.disconnected', participantId: command.participantId },
+        { kind: 'participant.disconnected', participantId: input.participantId },
       );
-      const participant = next.engine.participants.find(
-        (item) => item.id === command.participantId,
-      )!;
       return participant.required && next.status === 'running'
         ? append(
             { ...next, status: 'paused' },
-            { kind: 'session.paused', disconnectedParticipantId: command.participantId },
+            { kind: 'session.paused', disconnectedParticipantId: input.participantId },
           )
         : next;
     }
     case 'participant.reconnected': {
-      if (!next.engine.participants.some((item) => item.id === command.participantId))
-        throw new EngineError('UNKNOWN_PARTICIPANT', 'Participant is not part of this session.');
-      const connected = next.connectedParticipantIds.includes(command.participantId)
+      participantFor(next, input.participantId);
+      const connected = next.connectedParticipantIds.includes(input.participantId)
         ? next.connectedParticipantIds
-        : [...next.connectedParticipantIds, command.participantId];
+        : [...next.connectedParticipantIds, input.participantId];
       next = append(
         { ...next, connectedParticipantIds: connected },
-        { kind: 'participant.connected', participantId: command.participantId },
+        { kind: 'participant.connected', participantId: input.participantId },
       );
       const allRequiredConnected = next.engine.participants
         .filter((item) => item.required)
@@ -197,9 +201,15 @@ export function applyCommand(session: SessionState, command: ExternalCommand): S
 
 export function replaySession(
   options: Parameters<typeof createSession>[0],
-  commands: readonly ExternalCommand[],
+  inputs: readonly RecordedInput[],
 ): SessionState {
-  return commands.reduce(applyCommand, createSession(options));
+  return inputs.reduce(
+    (session, input) =>
+      input.source === 'client'
+        ? applyClientCommand(session, input.participantId, input.command)
+        : applySystemInput(session, input.input),
+    createSession(options),
+  );
 }
 
 export function projectEvents(
@@ -240,6 +250,26 @@ export function projectEvents(
       },
     ];
   });
+}
+
+function assertCanAdvance(session: SessionState): void {
+  if (session.status === 'completed')
+    throw new EngineError('SESSION_COMPLETED', 'The session is already complete.');
+}
+
+function participantFor(session: SessionState, participantId: ParticipantId): Participant {
+  const participant = session.engine.participants.find((item) => item.id === participantId);
+  if (!participant)
+    throw new EngineError('UNKNOWN_PARTICIPANT', 'Participant is not part of this session.');
+  return participant;
+}
+
+function record(session: SessionState, id: string, input: RecordedInput): SessionState {
+  return {
+    ...session,
+    processedInputIds: [...session.processedInputIds, id],
+    inputHistory: [...session.inputHistory, input],
+  };
 }
 
 function advanceAndAppend(session: SessionState): SessionState {

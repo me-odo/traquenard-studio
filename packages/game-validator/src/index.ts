@@ -1,11 +1,13 @@
-import type {
-  Audience,
-  Expression,
-  GameArtifact,
-  GameDefinition,
-  Operation,
-  TypeRef,
-  Value,
+import {
+  valueConformsToType,
+  type Audience,
+  type CompositeDefinition,
+  type Expression,
+  type GameArtifact,
+  type GameDefinition,
+  type Operation,
+  type TypeRef,
+  type Value,
 } from '@traquenard/game-ir';
 
 export interface ValidationIssue {
@@ -36,10 +38,12 @@ export function typeOfValue(value: Value): TypeRef | undefined {
   if (typeof value === 'number') return primitive('number');
   if (typeof value === 'boolean') return primitive('boolean');
   if (Array.isArray(value)) {
-    const first = (value as readonly Value[])[0];
-    return first === undefined
-      ? undefined
-      : { kind: 'collection', element: typeOfValue(first) ?? primitive('string') };
+    const items = value as readonly Value[];
+    const first = items[0];
+    if (first === undefined) return undefined;
+    const element = typeOfValue(first);
+    if (!element || items.some((item) => !valueConformsToType(item, element))) return undefined;
+    return { kind: 'collection', element };
   }
   return primitive('card');
 }
@@ -49,20 +53,19 @@ export function validateDefinition(definition: GameDefinition): ValidationResult
   const variables = new Map(
     definition.variables.map((declaration) => [declaration.name, declaration.type]),
   );
-  const compositeIds = new Set(definition.composites.map((composite) => composite.id));
+  const composites = new Map(definition.composites.map((composite) => [composite.id, composite]));
   const nodeIds = new Set<string>();
 
   if (definition.irVersion !== 1)
     issue('irVersion', 'unsupported_version', 'Only Game IR version 1 is supported.');
   if (variables.size !== definition.variables.length)
     issue('variables', 'duplicate_variable', 'Variable names must be unique.');
-  if (compositeIds.size !== definition.composites.length)
+  if (composites.size !== definition.composites.length)
     issue('composites', 'duplicate_composite', 'Composite identifiers must be unique.');
 
   for (const [index, declaration] of definition.variables.entries()) {
     if (declaration.initial !== undefined) {
-      const actual = typeOfValue(declaration.initial);
-      if (actual && !sameType(declaration.type, actual))
+      if (!valueConformsToType(declaration.initial, declaration.type))
         issue(
           `variables.${index}.initial`,
           'type_mismatch',
@@ -72,8 +75,12 @@ export function validateDefinition(definition: GameDefinition): ValidationResult
   }
 
   visit(definition.root, 'root', variables);
-  for (const [index, composite] of definition.composites.entries())
-    visit(composite.implementation, `composites.${index}.implementation`, new Map(variables));
+  for (const [index, composite] of definition.composites.entries()) {
+    validateCompositePorts(composite, index);
+    const scope = new Map(variables);
+    for (const port of [...composite.inputs, ...composite.outputs]) scope.set(port.name, port.type);
+    visit(composite.implementation, `composites.${index}.implementation`, scope);
+  }
   return { valid: issues.length === 0, issues };
 
   function issue(path: string, code: string, message: string): void {
@@ -87,6 +94,14 @@ export function validateDefinition(definition: GameDefinition): ValidationResult
   ): TypeRef | undefined {
     switch (expression.kind) {
       case 'literal':
+        if (!valueConformsToType(expression.value, expression.valueType)) {
+          issue(
+            path,
+            'literal_value_type_mismatch',
+            `Literal value does not conform to ${showType(expression.valueType)}.`,
+          );
+          return undefined;
+        }
         return expression.valueType;
       case 'participants':
         return { kind: 'collection', element: primitive('participant') };
@@ -226,14 +241,32 @@ export function validateDefinition(definition: GameDefinition): ValidationResult
         );
         break;
       }
-      case 'composite.invoke':
-        if (!compositeIds.has(operation.compositeId))
+      case 'composite.invoke': {
+        const composite = composites.get(operation.compositeId);
+        if (!composite) {
           issue(
             `${path}.compositeId`,
             'unknown_composite',
             `Composite '${operation.compositeId}' is not defined.`,
           );
+          break;
+        }
+        validateBindings(
+          composite.inputs,
+          operation.arguments,
+          `${path}.arguments`,
+          (name, type, bindingPath) =>
+            requireType(operation.arguments[name]!, type, bindingPath, scope),
+        );
+        validateBindings(
+          composite.outputs,
+          operation.outputs,
+          `${path}.outputs`,
+          (name, type, bindingPath) =>
+            requireOutput(operation.outputs[name]!, type, bindingPath, scope),
+        );
         break;
+      }
       case 'end':
         break;
     }
@@ -247,6 +280,37 @@ export function validateDefinition(definition: GameDefinition): ValidationResult
         `${path}.ids`,
         scope,
       );
+  }
+
+  function validateCompositePorts(composite: CompositeDefinition, index: number): void {
+    const names = [...composite.inputs, ...composite.outputs].map((port) => port.name);
+    if (new Set(names).size !== names.length)
+      issue(
+        `composites.${index}`,
+        'duplicate_composite_port',
+        `Composite '${composite.id}' port names must be unique.`,
+      );
+  }
+
+  function validateBindings<T>(
+    ports: readonly { readonly name: string; readonly type: TypeRef }[],
+    bindings: Readonly<Record<string, T>>,
+    path: string,
+    validate: (name: string, type: TypeRef, path: string) => void,
+  ): void {
+    const expectedNames = new Set(ports.map((port) => port.name));
+    for (const port of ports) {
+      if (!(port.name in bindings))
+        issue(
+          `${path}.${port.name}`,
+          'missing_composite_binding',
+          `Missing binding '${port.name}'.`,
+        );
+      else validate(port.name, port.type, `${path}.${port.name}`);
+    }
+    for (const name of Object.keys(bindings))
+      if (!expectedNames.has(name))
+        issue(`${path}.${name}`, 'unknown_composite_binding', `Unknown binding '${name}'.`);
   }
 }
 

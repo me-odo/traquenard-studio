@@ -8,8 +8,9 @@ import {
   type GameArtifact,
   type GameDefinition,
   type Operation,
+  type TypeRef,
 } from '@traquenard/game-ir';
-import { validateDefinition, type ValidationResult } from '@traquenard/game-validator';
+import { sameType, validateDefinition, type ValidationResult } from '@traquenard/game-validator';
 
 export type DraftBlock =
   | { readonly id: string; readonly kind: 'select-player'; readonly output: string }
@@ -47,9 +48,32 @@ export interface BlockCatalogEntry {
   readonly kind: DraftBlock['kind'];
   readonly label: string;
   readonly summary: string;
-  readonly requires: readonly string[];
-  readonly provides: readonly string[];
+  readonly inputs: readonly TypedPort[];
+  readonly outputs: readonly TypedPort[];
   readonly create: (id: string) => DraftBlock;
+}
+
+export interface TypedPort {
+  readonly name: string;
+  readonly type: TypeRef;
+}
+
+export interface ValueReference {
+  readonly id: string;
+  readonly type: TypeRef;
+  readonly source:
+    { readonly kind: 'runtime' } | { readonly kind: 'block'; readonly blockId: string };
+}
+
+export interface InsertionSlot {
+  readonly index: number;
+  readonly availableValues: readonly ValueReference[];
+}
+
+export interface BlockCompatibility extends BlockCatalogEntry {
+  readonly compatible: boolean;
+  readonly reason?: string;
+  readonly candidates: Readonly<Record<string, readonly ValueReference[]>>;
 }
 
 export const blockCatalog: readonly BlockCatalogEntry[] = [
@@ -57,24 +81,24 @@ export const blockCatalog: readonly BlockCatalogEntry[] = [
     kind: 'select-player',
     label: 'Choose player',
     summary: 'Deterministically selects from joined players.',
-    requires: ['players'],
-    provides: ['selectedPlayer'],
+    inputs: [{ name: 'players', type: t.collection(t.participant) }],
+    outputs: [{ name: 'selectedPlayer', type: t.participant }],
     create: (id) => ({ id, kind: 'select-player', output: 'selectedPlayer' }),
   },
   {
     kind: 'display',
     label: 'Display prompt',
     summary: 'Shows server-filtered presentation intent.',
-    requires: [],
-    provides: [],
+    inputs: [],
+    outputs: [],
     create: (id) => ({ id, kind: 'display', message: 'Get ready!', audience: 'everyone' }),
   },
   {
     kind: 'ask-selected',
     label: 'Ask selected player',
     summary: 'Waits for a typed choice from the selected player.',
-    requires: ['selectedPlayer'],
-    provides: ['answer'],
+    inputs: [{ name: 'participant', type: t.participant }],
+    outputs: [{ name: 'answer', type: t.string }],
     create: (id) => ({
       id,
       kind: 'ask-selected',
@@ -87,34 +111,68 @@ export const blockCatalog: readonly BlockCatalogEntry[] = [
     kind: 'wait',
     label: 'Wait',
     summary: 'Schedules a logical timer.',
-    requires: [],
-    provides: [],
+    inputs: [],
+    outputs: [],
     create: (id) => ({ id, kind: 'wait', durationMs: 1000 }),
   },
   {
     kind: 'end',
     label: 'End game',
     summary: 'Completes the session.',
-    requires: [],
-    provides: [],
+    inputs: [],
+    outputs: [],
     create: (id) => ({ id, kind: 'end' }),
   },
 ] as const;
 
-export function availableBlocks(
-  draft: GameDraft,
-): readonly (BlockCatalogEntry & { readonly compatible: boolean; readonly reason?: string })[] {
-  const provided = new Set(['players']);
-  for (const block of draft.blocks) {
+export function availableBlocks(draft: GameDraft): readonly BlockCompatibility[] {
+  const slot = insertionSlots(draft).at(-1)!;
+  return blockCatalog.map((entry) => compatibilityAtSlot(entry, slot));
+}
+
+export function insertionSlots(draft: GameDraft): readonly InsertionSlot[] {
+  const available: ValueReference[] = [
+    {
+      id: 'runtime.participants',
+      type: t.collection(t.participant),
+      source: { kind: 'runtime' },
+    },
+  ];
+  const slots: InsertionSlot[] = [{ index: 0, availableValues: [...available] }];
+  for (const [index, block] of draft.blocks.entries()) {
     const entry = blockCatalog.find((item) => item.kind === block.kind);
-    entry?.provides.forEach((item) => provided.add(item));
+    for (const output of entry?.outputs ?? []) {
+      const outputName = 'output' in block ? block.output : output.name;
+      available.push({
+        id: outputName,
+        type: output.type,
+        source: { kind: 'block', blockId: block.id },
+      });
+    }
+    slots.push({ index: index + 1, availableValues: [...available] });
   }
-  return blockCatalog.map((entry) => {
-    const missing = entry.requires.filter((requirement) => !provided.has(requirement));
-    return missing.length === 0
-      ? { ...entry, compatible: true }
-      : { ...entry, compatible: false, reason: `Requires ${missing.join(', ')}` };
-  });
+  return slots;
+}
+
+export function compatibilityAtSlot(
+  entry: BlockCatalogEntry,
+  slot: InsertionSlot,
+): BlockCompatibility {
+  const candidates = Object.fromEntries(
+    entry.inputs.map((input) => [
+      input.name,
+      slot.availableValues.filter((value) => sameType(value.type, input.type)),
+    ]),
+  );
+  const missing = entry.inputs.filter((input) => candidates[input.name]?.length === 0);
+  return missing.length === 0
+    ? { ...entry, compatible: true, candidates }
+    : {
+        ...entry,
+        compatible: false,
+        candidates,
+        reason: `No ${showType(missing[0]!.type)} value is available for input '${missing[0]!.name}'.`,
+      };
 }
 
 export function appendBlock(draft: GameDraft, kind: DraftBlock['kind'], id: string): GameDraft {
@@ -206,3 +264,7 @@ function compileBlock(block: DraftBlock): Operation {
 }
 
 export type { CompositeDefinition };
+
+function showType(type: TypeRef): string {
+  return type.kind === 'collection' ? `Collection<${showType(type.element)}>` : type.kind;
+}

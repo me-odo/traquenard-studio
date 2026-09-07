@@ -53,4 +53,50 @@ describe('Game IR properties', () => {
       { seed: 20260907 },
     );
   });
+
+  it('never accepts heterogeneous values under a homogeneous collection type', () => {
+    fc.assert(
+      fc.property(fc.array(fc.integer()), fc.string(), (numbers, text) => {
+        const definition: GameDefinition = {
+          irVersion: IR_VERSION,
+          gameId: 'heterogeneous',
+          title: 'Heterogeneous',
+          variables: [{ name: 'numbers', type: t.collection(t.number) }],
+          composites: [],
+          root: {
+            id: 'set',
+            kind: 'set',
+            variable: 'numbers',
+            value: {
+              kind: 'literal',
+              value: [...numbers, text],
+              valueType: t.collection(t.number),
+            },
+          },
+        };
+        expect(validateDefinition(definition).valid).toBe(false);
+      }),
+      { seed: 20260907 },
+    );
+  });
+
+  it('accepts arbitrary empty collections when their explicit type is sound', () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom(t.string, t.number, t.boolean, t.participant, t.card),
+        (element) => {
+          const definition: GameDefinition = {
+            irVersion: IR_VERSION,
+            gameId: 'empty',
+            title: 'Empty',
+            variables: [{ name: 'items', type: t.collection(element), initial: [] }],
+            composites: [],
+            root: { id: 'end', kind: 'end' },
+          };
+          expect(validateDefinition(definition).valid).toBe(true);
+        },
+      ),
+      { seed: 20260907 },
+    );
+  });
 });
