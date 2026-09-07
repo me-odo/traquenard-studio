@@ -1,0 +1,39 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "paths": {
+      "@traquenard/game-ir": ["./packages/game-ir/src/index.ts"],
+      "@traquenard/game-validator": ["./packages/game-validator/src/index.ts"],
+      "@traquenard/engine-core": ["./packages/engine-core/src/index.ts"],
+      "@traquenard/engine-runtime": ["./packages/engine-runtime/src/index.ts"],
+      "@traquenard/authoring-domain": ["./packages/authoring-domain/src/index.ts"],
+      "@traquenard/multiplayer-protocol": ["./packages/multiplayer-protocol/src/index.ts"],
+      "@traquenard/game-simulator": ["./packages/game-simulator/src/index.ts"]
+    },
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "resolveJsonModule": true,
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true,
+    "types": ["node", "vitest/globals"]
+  },
+  "include": [
+    "apps/**/*.ts",
+    "apps/**/*.tsx",
+    "apps/**/*.d.ts",
+    "packages/**/*.ts",
+    "scripts/**/*.ts",
+    "tests/**/*.ts",
+    "vite.config.ts",
+    "vitest.config.ts",
+    "playwright.config.ts"
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "name": "@traquenard/server",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": "./src/index.ts",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "build": "esbuild src/main.ts --bundle --platform=node --format=esm --outfile=../../dist/server/main.js"
+  },
+  "dependencies": {
+    "@fastify/websocket": "11.3.0",
+    "@traquenard/engine-runtime": "workspace:*",
+    "@traquenard/game-ir": "workspace:*",
+    "@traquenard/multiplayer-protocol": "workspace:*",
+    "fastify": "5.12.3",
+    "kysely": "0.29.5",
+    "pg": "8.23.0",
+    "zod": "4.5.4"
+  },
+  "devDependencies": {
+    "@types/pg": "8.23.1",
+    "esbuild": "0.28.2"
+  }
+}

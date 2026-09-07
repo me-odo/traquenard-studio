@@ -1,0 +1,9 @@
+{
+  "name": "@traquenard/engine-core",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "@traquenard/game-ir": "workspace:*"
+  }
+}

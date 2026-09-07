@@ -1,0 +1,11 @@
+{
+  "name": "@traquenard/engine-runtime",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "@traquenard/engine-core": "workspace:*",
+    "@traquenard/game-ir": "workspace:*",
+    "@traquenard/game-validator": "workspace:*"
+  }
+}

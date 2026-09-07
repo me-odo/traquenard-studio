@@ -1,0 +1,10 @@
+{
+  "name": "@traquenard/game-simulator",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "@traquenard/engine-runtime": "workspace:*",
+    "@traquenard/game-ir": "workspace:*"
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "name": "traquenard-studio",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "pnpm@12.3.4",
+  "engines": {
+    "node": ">=24 <25",
+    "pnpm": ">=12 <13"
+  },
+  "scripts": {
+    "bootstrap": "pnpm install --frozen-lockfile",
+    "dev": "node scripts/dev.mjs",
+    "doctor": "node scripts/doctor.mjs",
+    "infra:up": "docker compose up -d postgres",
+    "infra:down": "docker compose down",
+    "db:migrate": "node scripts/db.mjs migrate",
+    "db:reset": "node scripts/db.mjs reset",
+    "test": "vitest run --exclude '**/*.integration.test.ts' --exclude '**/*.property.test.ts'",
+    "test:watch": "vitest",
+    "test:property": "vitest run tests/*.property.test.ts",
+    "test:integration": "vitest run tests/*.integration.test.ts",
+    "test:e2e": "playwright test",
+    "coverage": "vitest run --coverage",
+    "lint": "eslint . && node scripts/architecture-check.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit",
+    "build": "pnpm typecheck && pnpm --filter @traquenard/web build && pnpm --filter @traquenard/server build",
+    "docs:axioms": "tsx scripts/generate-axiom-docs.ts",
+    "skills:install": "node scripts/install-skills.mjs",
+    "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm test:property && pnpm test:integration && pnpm coverage && pnpm build",
+    "clean": "node scripts/clean.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.13.3",
+    "@vitest/coverage-v8": "5.0.0",
+    "eslint": "10.10.0",
+    "fast-check": "4.9.0",
+    "prettier": "3.9.6",
+    "tsx": "4.23.13",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.69.0",
+    "vitest": "5.0.0"
+  }
+}

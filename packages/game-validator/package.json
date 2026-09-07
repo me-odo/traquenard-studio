@@ -1,0 +1,9 @@
+{
+  "name": "@traquenard/game-validator",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "@traquenard/game-ir": "workspace:*"
+  }
+}
