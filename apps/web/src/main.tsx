@@ -121,7 +121,7 @@ function RuntimeProof() {
   };
 
   return (
-    <main>
+    <main className="runtime-proof">
       <header className="topbar">
         <div>
           <span className="eyebrow">RUNTIME / FOUNDATION PROOF · IR v1</span>
