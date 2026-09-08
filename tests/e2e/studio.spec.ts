@@ -1,4 +1,18 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
+
+async function dragWithPointer(page: Page, source: Locator, target: Locator) {
+  await target.scrollIntoViewIfNeeded();
+  await source.scrollIntoViewIfNeeded();
+  const sourceBox = await source.boundingBox();
+  const targetBox = await target.boundingBox();
+  if (!sourceBox || !targetBox) throw new Error('Drag source or target is not visible.');
+  await page.mouse.move(sourceBox.x + sourceBox.width / 2, sourceBox.y + sourceBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2, {
+    steps: 16,
+  });
+  await page.mouse.up();
+}
 
 test('author publishes, hosts, joins a second participant, and completes a game', async ({
   page,
@@ -402,4 +416,72 @@ test('core authoring mobile uses exclusive resource, flow, reference, and Compos
     ),
   ).toBe(true);
   expect(await mobile.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+});
+
+test('framework spike uses dnd-kit for palette insertion, reorder, nested drop, and inspection', async ({
+  page,
+}) => {
+  await page.goto('/lab/framework-spike');
+  const workspace = page.getByRole('region', { name: 'dnd-kit structured authoring proof' });
+  const flow = workspace.getByRole('region', { name: 'Custom structured flow' });
+
+  await dragWithPointer(
+    page,
+    workspace.locator('[data-palette-kind="wait"]'),
+    flow.locator('[data-slot="slot:authoring-root:4"]'),
+  );
+  await expect(flow.getByText(/answer-check → spike-wait-1 → each-player/)).toBeVisible();
+
+  await dragWithPointer(
+    page,
+    flow.locator('[data-operation-id="draw-question"] .framework-drag-handle'),
+    flow.locator('[data-slot="slot:authoring-root:0"]'),
+  );
+  await expect(flow.getByText(/draw-question → choose-player/)).toBeVisible();
+
+  await dragWithPointer(
+    page,
+    flow.locator('[data-operation-id="spike-wait-1"] .framework-drag-handle'),
+    flow.locator('[data-slot="slot:each-player-body:1"]'),
+  );
+  await expect(flow.getByText('For Each body: greet-player → spike-wait-1')).toBeVisible();
+  const inspector = workspace.getByRole('complementary', { name: 'Editable semantic inspector' });
+  await expect(inspector.getByRole('heading', { name: 'Wait' })).toBeVisible();
+  await inspector.getByLabel('Duration in seconds').fill('3');
+  await expect(inspector.getByText('3 seconds')).toBeVisible();
+});
+
+test('framework spike projects Blockly statement containers and reflects an adapter command', async ({
+  page,
+}) => {
+  await page.goto('/lab/framework-spike');
+  await page.getByRole('button', { name: 'Blockly' }).click();
+  const proof = page.getByRole('region', { name: 'Blockly authoring projection proof' });
+  await expect(proof.getByTestId('blockly-workspace')).toBeVisible();
+  await expect(proof.getByRole('region', { name: 'Blocks workspace.' })).toBeVisible();
+  await proof.getByRole('button', { name: 'Move Else Wait into For Each via adapter' }).click();
+  await expect(proof.getByText('move wait-again → each-player-body[1]')).toBeVisible();
+  await expect(proof.getByText('For Each body: greet-player → wait-again')).toBeVisible();
+  await expect(proof.getByText('Else body: empty')).toBeVisible();
+  await expect(
+    proof.getByRole('complementary', { name: 'External Blockly selection inspector' }),
+  ).toContainText('Wait');
+});
+
+test('framework spike candidates remain document-width-safe at 390 px', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/lab/framework-spike');
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+    ),
+  ).toBe(true);
+
+  await page.getByRole('button', { name: 'Blockly' }).click();
+  await expect(page.getByTestId('blockly-workspace')).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+    ),
+  ).toBe(true);
 });

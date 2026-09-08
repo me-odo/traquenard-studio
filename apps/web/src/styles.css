@@ -6,6 +6,558 @@
   font-synthesis: none;
 }
 
+/* Issue #7 isolated framework spike. Geometry is deliberately projection-only. */
+.framework-spike {
+  --framework-ink: #19201d;
+  --framework-muted: #68716c;
+  --framework-line: #cbd1cc;
+  --framework-accent: #16624f;
+  min-height: 100vh;
+  color: var(--framework-ink);
+  background: #f0f2ed;
+}
+
+.framework-spike button,
+.framework-spike input {
+  font: inherit;
+}
+
+.framework-spike-topbar {
+  position: sticky;
+  z-index: 30;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 13px 22px;
+  background: #fff;
+  border-bottom: 1px solid var(--framework-line);
+}
+
+.framework-spike-topbar > div {
+  display: grid;
+  gap: 2px;
+}
+
+.framework-spike-topbar h1,
+.framework-workspace h2,
+.blockly-spike-shell h2 {
+  margin: 0;
+}
+
+.framework-spike-topbar h1 {
+  font-size: clamp(19px, 2vw, 28px);
+}
+
+.framework-spike-topbar nav,
+.framework-mobile-nav {
+  display: flex;
+  gap: 7px;
+}
+
+.framework-spike-topbar nav button,
+.framework-mobile-nav button,
+.framework-flow header button,
+.blockly-surface header button {
+  min-height: 42px;
+  padding: 8px 12px;
+  color: var(--framework-ink);
+  background: #f4f5f1;
+  border: 1px solid var(--framework-line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.framework-spike-topbar nav button[aria-pressed='true'],
+.framework-mobile-nav button[aria-pressed='true'] {
+  color: #fff;
+  background: var(--framework-accent);
+  border-color: var(--framework-accent);
+}
+
+.framework-hypothesis {
+  margin: 0;
+  padding: 9px 22px;
+  color: #46514b;
+  background: #e3e9e4;
+  border-bottom: 1px solid var(--framework-line);
+  font-size: 13px;
+}
+
+.framework-workspace,
+.blockly-spike-shell {
+  display: grid;
+  grid-template-columns: 245px minmax(400px, 1fr) 285px;
+  height: calc(100vh - 128px);
+  min-height: 620px;
+  overflow: hidden;
+}
+
+.framework-library,
+.framework-inspector,
+.blockly-external-library,
+.blockly-external-inspector {
+  min-width: 0;
+  padding: 18px;
+  overflow: auto;
+  background: #fafbf8;
+}
+
+.framework-library,
+.blockly-external-library {
+  border-right: 1px solid var(--framework-line);
+}
+
+.framework-inspector,
+.blockly-external-inspector {
+  border-left: 1px solid var(--framework-line);
+}
+
+.framework-library section,
+.blockly-external-library section {
+  margin-top: 20px;
+}
+
+.framework-library h3,
+.blockly-external-library h3 {
+  margin: 0 0 8px;
+  color: var(--framework-muted);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.framework-palette-block,
+.blockly-external-library button {
+  display: block;
+  width: 100%;
+  min-height: 43px;
+  margin: 6px 0;
+  padding: 9px 10px;
+  color: var(--framework-ink);
+  text-align: left;
+  background: #fff;
+  border: 1px solid var(--framework-line);
+  border-radius: 8px;
+  cursor: grab;
+  touch-action: manipulation;
+}
+
+.framework-palette-block.is-dragging,
+.framework-block.is-dragging {
+  opacity: 0.35;
+}
+
+.framework-tree {
+  display: grid;
+  gap: 8px;
+  color: #435049;
+  font-size: 13px;
+}
+
+.framework-tree span {
+  padding-left: 10px;
+  border-left: 2px solid #aebdb5;
+}
+
+.framework-note {
+  color: var(--framework-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.framework-flow,
+.blockly-surface {
+  min-width: 0;
+  padding: 18px clamp(12px, 3vw, 34px) 70px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background-color: #e8ebe5;
+  background-image: radial-gradient(#bec6bf 0.7px, transparent 0.7px);
+  background-size: 17px 17px;
+}
+
+.framework-flow > header,
+.blockly-surface > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: min(660px, 100%);
+  margin: 0 auto 12px;
+}
+
+.framework-flow-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.framework-sequence {
+  width: min(660px, 100%);
+  margin: 0 auto;
+  padding: 0;
+  list-style: none;
+}
+
+.framework-block {
+  position: relative;
+  background: #fff;
+  border: 1px solid #b9c1bb;
+  border-radius: 12px;
+  box-shadow: 0 5px 16px #31433912;
+}
+
+.framework-block.is-selected {
+  border-color: var(--framework-accent);
+  box-shadow:
+    0 0 0 3px #b9d6cd,
+    0 7px 20px #31433918;
+}
+
+.framework-block-heading {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  min-height: 62px;
+}
+
+.framework-drag-handle,
+.framework-select {
+  color: var(--framework-ink);
+  background: transparent;
+  border: 0;
+}
+
+.framework-drag-handle {
+  border-right: 1px solid #e1e5e1;
+  cursor: grab;
+  touch-action: none;
+}
+
+.framework-select {
+  display: grid;
+  gap: 3px;
+  padding: 10px 13px;
+  overflow-wrap: anywhere;
+  text-align: left;
+  cursor: pointer;
+}
+
+.framework-select small {
+  color: var(--framework-muted);
+}
+
+.framework-block.is-c-shape {
+  padding: 0 0 13px 13px;
+  overflow: hidden;
+  background: #2d705f;
+  border-color: #225646;
+}
+
+.framework-block.is-c-shape > .framework-block-heading {
+  margin-left: -13px;
+  color: #fff;
+}
+
+.framework-block.is-c-shape .framework-drag-handle,
+.framework-block.is-c-shape > .framework-block-heading .framework-select {
+  color: #fff;
+}
+
+.c-slot {
+  margin: 0 0 0 0;
+  padding: 9px 11px 3px 15px;
+  background: #e8ebe5;
+  border-radius: 11px 0 0 11px;
+}
+
+.c-slot > span {
+  display: block;
+  margin-bottom: 3px;
+  color: #496058;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.c-slot .framework-sequence {
+  width: 100%;
+}
+
+.c-slot-else {
+  margin-top: 10px;
+  border-top: 10px solid #2d705f;
+}
+
+.framework-slot {
+  display: grid;
+  min-height: 18px;
+  place-items: center;
+  transition:
+    min-height 130ms ease,
+    background 130ms ease;
+}
+
+.framework-slot button {
+  min-height: 12px;
+  padding: 0 12px;
+  color: #1e6753;
+  background: #d6e4de;
+  border: 0;
+  border-radius: 99px;
+  opacity: 0;
+  cursor: pointer;
+  transform: scale(0.8);
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
+}
+
+.framework-slot button span {
+  font-size: 11px;
+}
+
+.framework-slot:hover,
+.framework-slot:focus-within,
+.framework-slot.is-target {
+  min-height: 48px;
+  background: #a8cabd55;
+  border-radius: 8px;
+}
+
+.framework-slot:hover button,
+.framework-slot:focus-within button,
+.framework-slot.is-target button {
+  min-height: 34px;
+  opacity: 1;
+  transform: scale(1);
+}
+
+.semantic-order {
+  display: grid;
+  gap: 4px;
+  width: min(660px, 100%);
+  margin: 18px auto;
+  padding: 12px;
+  overflow-wrap: anywhere;
+  color: #2f453c;
+  background: #f8faf7;
+  border: 1px solid var(--framework-line);
+  border-radius: 9px;
+  font-size: 12px;
+}
+
+.framework-inspector h3,
+.blockly-external-inspector h3 {
+  margin: 4px 0;
+  font-size: 23px;
+}
+
+.framework-inspector label {
+  display: grid;
+  gap: 5px;
+  margin: 18px 0;
+  font-weight: 700;
+}
+
+.framework-inspector input,
+.framework-search-add input {
+  min-width: 0;
+  min-height: 42px;
+  padding: 7px 9px;
+  color: var(--framework-ink);
+  background: #fff;
+  border: 1px solid #9da8a1;
+  border-radius: 7px;
+}
+
+.framework-inspector dl div {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr);
+  padding: 7px 0;
+  border-bottom: 1px solid #e1e5e1;
+}
+
+.framework-inspector dt {
+  color: var(--framework-muted);
+}
+.framework-inspector dd {
+  margin: 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.framework-search-add {
+  margin-top: 22px;
+}
+
+.framework-search-add label {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.framework-search-add [role='group'] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 42px;
+}
+
+.framework-combobox-positioner {
+  z-index: 100;
+}
+
+.framework-combobox-popup {
+  width: var(--anchor-width);
+  max-height: min(320px, var(--available-height));
+  overflow: auto;
+  color: #19201d;
+  background: #fff;
+  border: 1px solid #89968e;
+  border-radius: 8px;
+  box-shadow: 0 12px 36px #17231d33;
+}
+
+.framework-combobox-popup [role='option'] {
+  padding: 10px;
+  cursor: pointer;
+}
+
+.framework-combobox-popup [role='option'][data-highlighted] {
+  color: #fff;
+  background: #16624f;
+}
+
+.framework-drag-overlay {
+  padding: 10px 16px;
+  color: #fff;
+  background: #16624f;
+  border-radius: 9px;
+  box-shadow: 0 10px 30px #0004;
+}
+
+.framework-mobile-nav,
+.mobile-back-flow {
+  display: none;
+}
+
+.framework-loading {
+  padding: 40px;
+}
+
+.blockly-spike-shell {
+  color: var(--framework-ink);
+}
+
+.blockly-surface {
+  display: grid;
+  grid-template-rows: auto minmax(440px, 1fr) auto;
+  padding-bottom: 18px;
+}
+
+.blockly-surface > header {
+  width: 100%;
+}
+
+.blockly-host {
+  min-width: 0;
+  min-height: 440px;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid var(--framework-line);
+  border-radius: 12px;
+}
+
+.blockly-surface .semantic-order {
+  width: 100%;
+  margin-bottom: 0;
+}
+
+@media (max-width: 760px) {
+  .framework-spike-topbar {
+    position: static;
+    display: grid;
+    padding: 12px;
+  }
+
+  .framework-spike-topbar nav button {
+    flex: 1;
+  }
+
+  .framework-hypothesis {
+    padding: 9px 12px;
+  }
+
+  .framework-mobile-nav {
+    display: flex;
+    padding: 8px 10px;
+    background: #fff;
+    border-bottom: 1px solid var(--framework-line);
+  }
+
+  .framework-mobile-nav button {
+    flex: 1;
+  }
+
+  .framework-workspace,
+  .blockly-spike-shell {
+    display: block;
+    width: 100%;
+    height: auto;
+    min-height: 650px;
+    overflow: visible;
+  }
+
+  .framework-workspace > aside,
+  .framework-workspace > .framework-flow {
+    display: none;
+    min-height: calc(100vh - 210px);
+    border: 0;
+  }
+
+  .framework-workspace.mobile-library > .framework-library,
+  .framework-workspace.mobile-flow > .framework-flow,
+  .framework-workspace.mobile-inspector > .framework-inspector {
+    display: block;
+  }
+
+  .framework-slot {
+    min-height: 40px;
+  }
+
+  .framework-slot button {
+    min-height: 34px;
+    opacity: 1;
+    transform: none;
+  }
+
+  .mobile-back-flow {
+    display: block;
+    margin-top: 20px;
+  }
+
+  .blockly-spike-shell > aside,
+  .blockly-spike-shell > .blockly-surface {
+    width: 100%;
+    border: 0;
+  }
+
+  .blockly-surface {
+    padding: 12px;
+  }
+
+  .blockly-host {
+    min-height: 520px;
+  }
+
+  .blockly-external-library,
+  .blockly-external-inspector {
+    padding: 14px;
+  }
+}
+
 /* Issue #2 editor-first reference prototype. Older lab rules elsewhere remain scoped to
    historical class names; this layer deliberately uses a compact application surface. */
 .editor-first-reference-lab {

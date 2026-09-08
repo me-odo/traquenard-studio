@@ -1,4 +1,4 @@
-import { StrictMode, useMemo, useRef, useState } from 'react';
+import { lazy, StrictMode, Suspense, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   appendBlock,
@@ -14,6 +14,8 @@ import { ReferenceLab } from './reference-lab.js';
 import { AuthoringLab } from './authoring-lab.js';
 import './styles.css';
 
+const FrameworkSpike = lazy(() => import('./framework-spike.js'));
+
 interface ApiEvent {
   readonly sequence: number;
   readonly kind: string;
@@ -24,6 +26,12 @@ function App() {
   if (window.location.pathname === '/lab/authoring') return <AuthoringLab />;
   if (window.location.pathname === '/lab/parallel') return <ParallelLab />;
   if (window.location.pathname === '/lab/references') return <ReferenceLab />;
+  if (window.location.pathname === '/lab/framework-spike')
+    return (
+      <Suspense fallback={<main className="lab">Loading framework spike…</main>}>
+        <FrameworkSpike />
+      </Suspense>
+    );
   return window.location.pathname === '/lab' ? <VisualLab /> : <Studio />;
 }
 
@@ -275,6 +283,11 @@ function VisualLab() {
         <span className="eyebrow">AUTHORING EXPERIMENT · ISSUE #6</span>
         <strong>Build flows with game resources</strong>
         <small>Resources, typed references, insertion, and nested structured editing →</small>
+      </a>
+      <a className="experiment-link" href="/lab/framework-spike">
+        <span className="eyebrow">TECHNICAL SPIKE · ISSUE #7</span>
+        <strong>Compare structured authoring frameworks</strong>
+        <small>Custom + dnd-kit/Base UI and Blockly over one semantic fixture →</small>
       </a>
       <section className="lab-grid">
         <article>

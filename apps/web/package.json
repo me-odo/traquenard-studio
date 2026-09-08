@@ -7,8 +7,11 @@
     "build": "vite build"
   },
   "dependencies": {
+    "@base-ui/react": "1.8.0",
+    "@dnd-kit/react": "0.5.0",
     "@traquenard/authoring-domain": "workspace:*",
     "@traquenard/game-ir": "workspace:*",
+    "blockly": "13.2.1",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
