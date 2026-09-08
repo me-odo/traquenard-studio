@@ -929,6 +929,8 @@
 
   .authoring-ui-flow {
     padding: 14px 10px 60px;
+    overflow: visible;
+    overscroll-behavior: auto;
   }
 
   .authoring-ui-flow > header {

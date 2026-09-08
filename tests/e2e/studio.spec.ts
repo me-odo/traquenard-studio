@@ -29,6 +29,87 @@ test('root is the current shared authoring baseline and runtime proof remains ex
   await expect(page.getByText('Canonical IR preview')).toBeVisible();
 });
 
+test('root review working copy survives reload, Reset stays canonical, and corrupt storage recovers', async ({
+  page,
+}) => {
+  await page.goto('/');
+  const selectWait = async () => {
+    await page
+      .locator('#authoring-node-wait-again')
+      .getByRole('button', { name: 'Wait step', exact: true })
+      .click();
+  };
+
+  await selectWait();
+  await page.getByLabel('Duration').fill('6');
+  await page.reload();
+  await selectWait();
+  await expect(page.getByLabel('Duration')).toHaveValue('6');
+
+  await page.getByRole('navigation', { name: 'Workspace actions' }).getByText('Reset').click();
+  await selectWait();
+  await expect(page.getByLabel('Duration')).toHaveValue('1');
+  await page.reload();
+  await selectWait();
+  await expect(page.getByLabel('Duration')).toHaveValue('1');
+
+  await page.getByLabel('Duration').fill('8');
+  const persistedKey = await page.evaluate(() =>
+    Object.keys(sessionStorage).find((key) => key.startsWith('traquenard%3Aauthoring-review:')),
+  );
+  expect(persistedKey).toBeTruthy();
+  await page.evaluate((key) => sessionStorage.setItem(key!, '{not-json'), persistedKey);
+  await page.reload();
+  await selectWait();
+  await expect(page.getByLabel('Duration')).toHaveValue('1');
+});
+
+test('review working copies are isolated by lab and fixture', async ({ page }) => {
+  await page.goto('/lab/authoring?device=desktop&fixture=challenge&containment=c-shape');
+  let frame = preview(page);
+  const selectChallengeWait = async () => {
+    await frame
+      .locator('#authoring-node-wait-again')
+      .getByRole('button', { name: 'Wait step', exact: true })
+      .click();
+  };
+
+  await selectChallengeWait();
+  await frame.getByLabel('Duration').fill('7');
+  await page.reload();
+  await selectChallengeWait();
+  await expect(frame.getByLabel('Duration')).toHaveValue('7');
+
+  await page.getByRole('region', { name: 'Experiment controls' }).getByText('Reset').click();
+  await selectChallengeWait();
+  await expect(frame.getByLabel('Duration')).toHaveValue('1');
+  await page.reload();
+  await selectChallengeWait();
+  await expect(frame.getByLabel('Duration')).toHaveValue('1');
+
+  await page.getByLabel('Fixture').selectOption('long-flow');
+  await expect(page).toHaveURL(/fixture=long-flow/);
+  frame = preview(page);
+  await frame
+    .locator('#authoring-node-wait-again')
+    .getByRole('button', { name: 'Wait step', exact: true })
+    .click();
+  await expect(frame.getByLabel('Duration')).toHaveValue('1');
+
+  await page.goto('/lab/parallel?device=desktop&fixture=mixed&projection=grouped');
+  frame = preview(page);
+  await frame.getByRole('button', { name: /BRANCH 3.*Wait.*10 seconds/ }).click();
+  await expect(frame.getByLabel('Duration')).toHaveValue('10');
+
+  await page.goto('/lab/references?device=desktop&fixture=current-player&navigation=on&traces=off');
+  frame = preview(page);
+  await frame
+    .locator('#authoring-node-player-gap-a')
+    .getByRole('button', { name: 'Wait step', exact: true })
+    .click();
+  await expect(frame.getByLabel('Duration')).toHaveValue('1');
+});
+
 test('lab index is registry-driven and every registered preview mounts the same baseline', async ({
   page,
 }) => {
@@ -96,6 +177,23 @@ test('standard harness keeps research controls outside a reproducible, URL-backe
   );
   await expect(controls.getByLabel('Fixture')).toHaveValue('group-vote');
   await expect(controls.getByRole('button', { name: 'Projection Grouped' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await controls.getByRole('button', { name: 'Projection Fork / Join' }).click();
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], {
+    origin: 'http://127.0.0.1:5173',
+  });
+  await controls.getByRole('button', { name: 'Copy review link' }).click();
+  await expect(controls.getByRole('button', { name: 'Link copied' })).toBeVisible();
+  const reviewUrl = await page.evaluate(() => navigator.clipboard.readText());
+  await page.goto(reviewUrl);
+  await expect(controls.getByRole('button', { name: 'Phone' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(controls.getByLabel('Fixture')).toHaveValue('group-vote');
+  await expect(controls.getByRole('button', { name: 'Projection Fork / Join' })).toHaveAttribute(
     'aria-pressed',
     'true',
   );
@@ -246,6 +344,43 @@ test('phone preview uses focused Flow, Data, Workflows, Inspector, and non-drag 
   expect(
     await frame.locator('html').evaluate((element) => element.scrollWidth <= element.clientWidth),
   ).toBe(true);
+});
+
+test('scaled phone preview accepts native wheel scrolling without leaking to the host', async ({
+  page,
+}) => {
+  await page.goto('/lab/authoring?device=phone&fixture=long-flow&containment=c-shape');
+  const frame = preview(page);
+  const iframe = page.locator('iframe');
+  const box = await iframe.boundingBox();
+  if (!box) throw new Error('Phone preview frame is not visible.');
+
+  await page.mouse.move(box.x + box.width / 2, box.y + Math.min(240, box.height / 2));
+  await page.mouse.wheel(0, 600);
+  await expect.poll(() => frame.locator('html').evaluate(() => window.scrollY)).toBeGreaterThan(0);
+
+  const firstInnerScroll = await frame.locator('html').evaluate(() => window.scrollY);
+  await page.mouse.wheel(0, 600);
+  await expect
+    .poll(() => frame.locator('html').evaluate(() => window.scrollY))
+    .toBeGreaterThan(firstInnerScroll);
+  expect(
+    await frame.locator('html').evaluate((element) => element.scrollWidth <= element.clientWidth),
+  ).toBe(true);
+
+  const controls = page.getByRole('region', { name: 'Experiment controls' });
+  const controlsBox = await controls.boundingBox();
+  if (!controlsBox) throw new Error('Experiment controls are not visible.');
+  const beforeHostWheel = await frame.locator('html').evaluate(() => window.scrollY);
+  await page.mouse.move(controlsBox.x + 10, controlsBox.y + 10);
+  await page.mouse.wheel(0, -300);
+  expect(await frame.locator('html').evaluate(() => window.scrollY)).toBe(beforeHostWheel);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/lab-preview/authoring?device=phone&fixture=long-flow&containment=c-shape');
+  await page.mouse.move(195, 300);
+  await page.mouse.wheel(0, 600);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
 });
 
 test('parallel lab changes only the registered parallel projection over baseline ordinary blocks', async ({

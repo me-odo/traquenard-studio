@@ -6,11 +6,17 @@ import { createLongBaselineDocument } from './document.js';
 import { LabHarness } from './lab-harness.js';
 import { rootAuthoringSurface } from './contracts.js';
 import { activeLabRegistry, labManifest, normalizedLabState } from './registry.js';
+import { labReviewSessionIdentity } from './state/review-session.js';
 
 export function CurrentAuthoringPage() {
   return (
     <AuthoringEditor
       initialDefinition={authoringCanonicalDefinition}
+      reviewSession={{
+        baselineId: rootAuthoringSurface.baselineId,
+        surfaceId: 'current-editor',
+        fixtureId: 'current',
+      }}
       experimentalAxes={rootAuthoringSurface.experimentalAxes}
     />
   );
@@ -77,6 +83,7 @@ export function LabPreviewPage({ id }: { readonly id: string }) {
   return (
     <AuthoringEditor
       initialDefinition={initialDefinition}
+      reviewSession={labReviewSessionIdentity(manifest.baselineId, manifest.id, state.fixture)}
       surfaceLabel={`${manifest.title} baseline preview`}
       experimentalAxes={manifest.experimentalAxes}
       overrides={overrides}

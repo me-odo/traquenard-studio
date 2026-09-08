@@ -1,12 +1,14 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { currentAuthoringBaseline } from './baseline.js';
 import { deviceProfiles, normalizedLabState, type LabManifest } from './registry.js';
+import { clearReviewSessionDefinition, labReviewSessionIdentity } from './state/review-session.js';
 
 export function LabHarness({ manifest }: { readonly manifest: LabManifest }) {
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search));
   const state = normalizedLabState(manifest, search);
   const profile = deviceProfiles[state.device];
   const stageRef = useRef<HTMLDivElement>(null);
+  const previewRef = useRef<HTMLIFrameElement>(null);
   const [scale, setScale] = useState(1);
   const [copied, setCopied] = useState(false);
   const canonicalSearch = new URLSearchParams();
@@ -108,13 +110,11 @@ export function LabHarness({ manifest }: { readonly manifest: LabManifest }) {
         <div className="lab-harness-actions">
           <button
             onClick={() => {
-              const next = new URLSearchParams();
-              next.set('device', manifest.deviceProfiles[0] ?? 'desktop');
-              next.set('fixture', manifest.fixtures[0]!.id);
-              for (const [key, value] of Object.entries(manifest.defaultConfiguration))
-                next.set(key, value);
-              window.history.replaceState(null, '', `${manifest.route}?${next.toString()}`);
-              setSearch(next);
+              clearReviewSessionDefinition(
+                labReviewSessionIdentity(manifest.baselineId, manifest.id, state.fixture),
+              );
+              previewRef.current?.contentWindow?.location.reload();
+              setCopied(false);
             }}
           >
             Reset
@@ -171,6 +171,7 @@ export function LabHarness({ manifest }: { readonly manifest: LabManifest }) {
           style={{ height: profile.height * scale + 24 }}
         >
           <iframe
+            ref={previewRef}
             key={previewUrl}
             title={`${manifest.title} ${profile.label} preview`}
             src={previewUrl}

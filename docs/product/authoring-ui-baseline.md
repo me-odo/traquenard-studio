@@ -33,6 +33,14 @@ The baseline descriptor, experiment manifests, shared editor, and Lab Harness li
 - Root and active labs share the shell, ordinary block renderer, structured blocks, reference chips, insertion slots, Library/Data/Workflows navigation, Inspector conventions, tokens, and focused mobile navigation.
 - Desktop and phone lab evaluation uses actual iframe viewports of 1280×800 and 390×844. Research controls and evidence remain on the host page, outside the preview.
 
+## Review-session working copies
+
+The current editor and Visual Lab previews keep their mutable semantic `GameDefinition` working copy in browser `sessionStorage` so an ordinary reload does not erase a manual review. Keys include the persistence schema, current baseline ID, surface/lab identity, and fixture identity; a future configuration that changes semantic fixture meaning must also supply a semantic configuration discriminator. Current lab configuration fields are presentation-only and remain in the URL, so switching projection or device retains the same fixture working copy.
+
+Stored envelopes are schema-marked and checked against their baseline, surface, fixture, and canonical game identity before Game IR parsing. Malformed, stale, unavailable, or incompatible storage falls back to a fresh clone of the canonical fixture. Reset clears only the selected working-copy key and restores that canonical clone.
+
+This is temporary, client-side review infrastructure. It is not production draft persistence, autosave, revision history, account ownership, or recovery architecture, and a restored working copy is never a published artifact.
+
 ## Provisional integrated directions
 
 - Typed reference chips are the current local representation. Semantic source navigation is integrated but remains under Issue #2 human review; provenance traces are an optional inspection/debug overlay.

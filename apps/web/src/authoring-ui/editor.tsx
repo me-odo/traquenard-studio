@@ -37,6 +37,7 @@ import {
   setWaitDuration,
   type SemanticSlot,
 } from './document.js';
+import { useReviewSessionDefinition, type ReviewSessionIdentity } from './state/review-session.js';
 
 type MobilePanel = 'flow' | 'data' | 'workflows' | 'inspector';
 type Selection =
@@ -47,6 +48,7 @@ type Selection =
 
 export interface AuthoringEditorProps {
   readonly initialDefinition: GameDefinition;
+  readonly reviewSession: ReviewSessionIdentity;
   readonly experimentalAxes?: readonly string[];
   readonly overrides?: AuthoringExperimentOverrides;
   readonly surfaceLabel?: string;
@@ -58,23 +60,25 @@ const palette = insertionCatalog.filter((item) =>
 
 export function AuthoringEditor({
   initialDefinition,
+  reviewSession,
   experimentalAxes = [],
   overrides = {},
   surfaceLabel = 'Current authoring editor',
 }: AuthoringEditorProps) {
-  const [definition, setDefinition] = useState<GameDefinition>(() =>
-    structuredClone(initialDefinition),
+  const { definition, setDefinition, resetDefinition } = useReviewSessionDefinition(
+    initialDefinition,
+    reviewSession,
   );
   const [selection, setSelection] = useState<Selection>({
     kind: 'operation',
-    id: firstOperationId(initialDefinition),
+    id: firstOperationId(definition),
   });
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>('flow');
   const [workflowId, setWorkflowId] = useState<string>();
   const [selectionHistory, setSelectionHistory] = useState<readonly Selection[]>([]);
   const [paletteSlot, setPaletteSlot] = useState<SemanticSlot>();
   const [status, setStatus] = useState('Working copy matches the selected fixture.');
-  const nextId = useRef(1);
+  const nextId = useRef(nextGeneratedOperationId(definition));
   const settings = { ...defaultAuthoringBaselineOverrides, ...overrides };
   const selectedOperation =
     selection.kind === 'operation' ? findOperation(definition, selection.id) : undefined;
@@ -143,10 +147,13 @@ export function AuthoringEditor({
             <a href="/runtime-proof">Runtime proof</a>
             <button
               onClick={() => {
-                setDefinition(structuredClone(initialDefinition));
+                resetDefinition();
+                nextId.current = 1;
                 setWorkflowId(undefined);
                 setSelectionHistory([]);
                 setSelection({ kind: 'operation', id: firstOperationId(initialDefinition) });
+                setMobilePanel('flow');
+                setPaletteSlot(undefined);
                 setStatus('Working copy reset to the selected fixture.');
               }}
             >
@@ -1137,4 +1144,30 @@ function decodeSlot(value: string): SemanticSlot | undefined {
   return match?.[1] && match[2] !== undefined
     ? { sequenceId: match[1], index: Number(match[2]) }
     : undefined;
+}
+
+function nextGeneratedOperationId(definition: GameDefinition): number {
+  let highest = 0;
+  const visit = (operation: Operation) => {
+    const generated = /^baseline-[a-z-]+-(\d+)$/.exec(operation.id);
+    if (generated?.[1]) highest = Math.max(highest, Number(generated[1]));
+    switch (operation.kind) {
+      case 'sequence':
+        operation.steps.forEach(visit);
+        break;
+      case 'control.foreach':
+        visit(operation.body);
+        break;
+      case 'control.if':
+        visit(operation.then);
+        if (operation.else) visit(operation.else);
+        break;
+      case 'control.parallel':
+        operation.branches.forEach(visit);
+        break;
+    }
+  };
+  visit(definition.root);
+  definition.composites.forEach((composite) => visit(composite.implementation));
+  return highest + 1;
 }
