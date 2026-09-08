@@ -9,9 +9,13 @@ import {
   type DraftBlock,
   type GameDraft,
 } from '@traquenard/authoring-domain';
-import { ParallelLab } from './parallel-lab.js';
-import { ReferenceLab } from './reference-lab.js';
-import { AuthoringLab } from './authoring-lab.js';
+import {
+  CurrentAuthoringPage,
+  LabPreviewPage,
+  RegisteredLabPage,
+  VisualLabIndex,
+} from './authoring-ui/pages.js';
+import './authoring-ui/styles.css';
 import './styles.css';
 
 interface ApiEvent {
@@ -21,13 +25,16 @@ interface ApiEvent {
 }
 
 function App() {
-  if (window.location.pathname === '/lab/authoring') return <AuthoringLab />;
-  if (window.location.pathname === '/lab/parallel') return <ParallelLab />;
-  if (window.location.pathname === '/lab/references') return <ReferenceLab />;
-  return window.location.pathname === '/lab' ? <VisualLab /> : <Studio />;
+  if (window.location.pathname === '/runtime-proof') return <RuntimeProof />;
+  if (window.location.pathname === '/lab') return <VisualLabIndex />;
+  if (window.location.pathname.startsWith('/lab-preview/'))
+    return <LabPreviewPage id={window.location.pathname.slice('/lab-preview/'.length)} />;
+  if (window.location.pathname.startsWith('/lab/'))
+    return <RegisteredLabPage id={window.location.pathname.slice('/lab/'.length)} />;
+  return <CurrentAuthoringPage />;
 }
 
-function Studio() {
+function RuntimeProof() {
   const [draft, setDraft] = useState<GameDraft>(sequentialDraft);
   const [query, setQuery] = useState('');
   const [artifactId, setArtifactId] = useState<string>();
@@ -117,14 +124,14 @@ function Studio() {
     <main>
       <header className="topbar">
         <div>
-          <span className="eyebrow">FOUNDATION · IR v1</span>
-          <h1>Traquenard Studio</h1>
+          <span className="eyebrow">RUNTIME / FOUNDATION PROOF · IR v1</span>
+          <h1>Executable publish and session proof</h1>
           <small className="foundation-context">
-            Executable Studio and runtime proof—not the final editor.
+            Preserved evidence for immutable publishing and authoritative session execution.
           </small>
         </div>
         <nav aria-label="Project navigation">
-          <a href="/lab/authoring">Current authoring lab</a>
+          <a href="/">Current editor</a>
           <a href="/lab">Visual Lab</a>
           <span className={`status status-${status}`}>{status}</span>
         </nav>
@@ -247,82 +254,6 @@ function Studio() {
             <pre>{JSON.stringify(publishDraft(draft, 1).definition, null, 2)}</pre>
           </details>
         </aside>
-      </section>
-    </main>
-  );
-}
-
-function VisualLab() {
-  const [flipped, setFlipped] = useState(false);
-  const [score, setScore] = useState(4);
-  return (
-    <main className="lab">
-      <header className="topbar">
-        <div>
-          <span className="eyebrow">EXPERIMENT INDEX</span>
-          <h1>Visual Lab</h1>
-        </div>
-        <a href="/">← Studio</a>
-      </header>
-      <p>
-        Test the active authoring work first. Supporting labs retain unresolved design evidence.
-      </p>
-      <section className="lab-experiment-group" aria-labelledby="active-authoring-heading">
-        <h2 id="active-authoring-heading">Active authoring work</h2>
-        <a className="experiment-link active" href="/lab/authoring">
-          <span className="eyebrow">CURRENT AUTHORING LAB · ISSUE #6</span>
-          <strong>Core authoring grammar and Resources ↔ Flow</strong>
-          <small>Resources, typed references, insertion, and nested structured editing →</small>
-        </a>
-      </section>
-      <section className="lab-experiment-group" aria-labelledby="supporting-evidence-heading">
-        <h2 id="supporting-evidence-heading">Supporting / unresolved evidence</h2>
-        <a className="experiment-link" href="/lab/parallel">
-          <span className="eyebrow">AUTHORING EXPERIMENT · ISSUE #1</span>
-          <strong>Compare parallel execution grammars</strong>
-          <small>Lanes, fork/join, and grouped cards across four semantic fixtures →</small>
-        </a>
-        <a className="experiment-link" href="/lab/references">
-          <span className="eyebrow">AUTHORING EXPERIMENT · ISSUE #2</span>
-          <strong>Edit typed references through nested flows</strong>
-          <small>Direct reference chips, reversible navigation, and optional trace tools →</small>
-        </a>
-      </section>
-      <p className="lab-history">
-        Issue #7 framework evidence is accepted and recorded in ADR 0005; its comparison lab is
-        retired.
-      </p>
-      <h2 className="lab-grid-heading">Runtime presentation proofs</h2>
-      <section className="lab-grid">
-        <article>
-          <h2>Controlled die</h2>
-          <div className="die" aria-label="Die result 5">
-            ••
-            <br />•<br />
-            ••
-          </div>
-          <small>Authoritative result: 5</small>
-        </article>
-        <article>
-          <h2>Card flip</h2>
-          <button
-            className={`card ${flipped ? 'flipped' : ''}`}
-            onClick={() => setFlipped(!flipped)}
-          >
-            {flipped ? 'A ♥' : 'TRQ'}
-          </button>
-          <small>State-driven face</small>
-        </article>
-        <article>
-          <h2>Score event</h2>
-          <div className="score">{score}</div>
-          <button onClick={() => setScore(7)}>Apply +3 event</button>
-        </article>
-        <article>
-          <h2>Countdown</h2>
-          <div className="countdown">00:03</div>
-          <small>Logical time remaining</small>
-        </article>
       </section>
     </main>
   );

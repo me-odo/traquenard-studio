@@ -15,6 +15,15 @@ Use `./scripts/setup-local.sh --with-docker` to also start PostgreSQL, apply mig
 
 Open <http://localhost:5173>. The API listens on <http://localhost:3000>.
 
+The web routes have explicit responsibilities:
+
+- `/` is the current integrated authoring baseline.
+- `/runtime-proof` preserves the executable immutable-publish and authoritative-session proof.
+- `/lab` lists registered Visual Lab experiments.
+- `/lab/authoring`, `/lab/parallel`, and `/lab/references` use the standard Lab Harness around the shared baseline.
+
+See [`docs/product/authoring-ui-baseline.md`](docs/product/authoring-ui-baseline.md) for the baseline/override contract and decision-propagation workflow.
+
 ## Commands
 
 | Command                             | Purpose                                                |

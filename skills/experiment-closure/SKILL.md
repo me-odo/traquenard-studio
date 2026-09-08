@@ -14,3 +14,11 @@ An experiment is not complete when it reaches a recommendation. Before closing i
 5. **Product surfaces:** Remove stale experiment navigation and refresh root, Visual Lab, or status indicators so the current experiment is obvious.
 6. **Verify:** Run targeted tests, typecheck, the repository's full `pnpm verify`, and independent CI after push.
 7. **Close:** After all applicable gates pass, add a final comment with the decision, durable record, cleanup, propagation matrix, verification, and exact commits; then close the source issue. Identify external continuity systems that still need synchronization in the handoff, without making any such system a build dependency.
+
+Classify the decision scope before applying these gates:
+
+- **Global baseline decision:** migrate the shared baseline implementation, remove or update every affected experimental override, verify `/` and every active dependent lab, and update the authoring baseline current-truth document before closure.
+- **Local decision:** propagate only to the relevant shared component or experiment and its dependents.
+- **Rejected or inconclusive:** keep the direction out of the shared baseline and remove disposable evidence when appropriate.
+
+GitHub comments and documentation alone do not count as implementation propagation when active code surfaces are affected.

@@ -6,4 +6,6 @@ Semantic zoom keeps composites readable as single typed units while allowing ins
 
 Editor experiments use the `/lab` route and the same authoring/IR APIs. Hypotheses and evaluation criteria belong in deduplicated GitHub Issues when authentication is available.
 
+Authoring experiments inherit the current shared authoring baseline and use the standard Lab Harness with reproducible desktop/phone viewports. A manifest declares only the axis under test; independent full-editor forks are not valid experiment surfaces. Research controls surround the preview rather than occupying the simulated application viewport. Accepted global decisions propagate through shared baseline code to `/` and every active lab before an experiment closes.
+
 Structured authoring uses a Traquenard-owned renderer. dnd-kit may provide gesture mechanics and Base UI may provide accessible headless interaction primitives, but neither library defines document or game semantics. Tap, click, search, and keyboard paths remain first-class, and visual experiments remain provisional until human review.

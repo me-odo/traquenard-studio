@@ -5,6 +5,7 @@ Traquenard Studio is a modular TypeScript monolith with extraction-ready authori
 - [`docs/product/vision.md`](docs/product/vision.md) — product scope and non-goals
 - [`docs/product/glossary.md`](docs/product/glossary.md) — canonical vocabulary
 - [`docs/product/ux-principles.md`](docs/product/ux-principles.md) — durable editor/gameplay principles
+- [`docs/product/authoring-ui-baseline.md`](docs/product/authoring-ui-baseline.md) — current shared editor and Visual Lab propagation contract
 - [`docs/architecture/domain-model.md`](docs/architecture/domain-model.md) — hierarchy and package ownership
 - [`docs/architecture/game-ir.md`](docs/architecture/game-ir.md) — canonical IR and extension rules
 - [`docs/architecture/runtime-semantics.md`](docs/architecture/runtime-semantics.md) — determinism, events, pause, visibility
