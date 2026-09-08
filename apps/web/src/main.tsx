@@ -11,6 +11,7 @@ import {
 } from '@traquenard/authoring-domain';
 import { ParallelLab } from './parallel-lab.js';
 import { ReferenceLab } from './reference-lab.js';
+import { AuthoringLab } from './authoring-lab.js';
 import './styles.css';
 
 interface ApiEvent {
@@ -20,6 +21,7 @@ interface ApiEvent {
 }
 
 function App() {
+  if (window.location.pathname === '/lab/authoring') return <AuthoringLab />;
   if (window.location.pathname === '/lab/parallel') return <ParallelLab />;
   if (window.location.pathname === '/lab/references') return <ReferenceLab />;
   return window.location.pathname === '/lab' ? <VisualLab /> : <Studio />;
@@ -268,6 +270,11 @@ function VisualLab() {
         <span className="eyebrow">AUTHORING EXPERIMENT · ISSUE #2</span>
         <strong>Edit typed references through nested flows</strong>
         <small>Direct reference chips, reversible navigation, and optional trace tools →</small>
+      </a>
+      <a className="experiment-link" href="/lab/authoring">
+        <span className="eyebrow">AUTHORING EXPERIMENT · ISSUE #6</span>
+        <strong>Build flows with game resources</strong>
+        <small>Resources, typed references, insertion, and nested structured editing →</small>
       </a>
       <section className="lab-grid">
         <article>

@@ -250,6 +250,11 @@ export function validateDraft(draft: GameDraft): ValidationResult {
   return validateDefinition(compileDraft(draft));
 }
 
+/** Validates a mutable authoring document against the canonical Game IR contract. */
+export function validateWorkingDefinition(definition: GameDefinition): ValidationResult {
+  return validateDefinition(definition);
+}
+
 export function publishDraft(draft: GameDraft, gameVersion: number): GameArtifact {
   const validation = validateDraft(draft);
   if (!validation.valid) throw new Error(validation.issues.map((item) => item.message).join(' '));

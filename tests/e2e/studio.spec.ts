@@ -302,3 +302,104 @@ test('trace overlay is optional and does not change the working flow', async ({ 
   ).toHaveCount(0);
   expect(await prototype.locator('.editor-node').count()).toBe(nodeCount);
 });
+
+test('core authoring lab connects resources, typed references, and structured flow editing', async ({
+  page,
+}) => {
+  await page.goto('/lab/authoring');
+  const workspace = page.getByRole('region', { name: 'Core authoring workspace' });
+  const resources = workspace.getByRole('complementary', { name: 'Game resources' });
+  const flow = workspace.getByRole('region', { name: 'Game flow' });
+  const inspector = workspace.getByRole('complementary', { name: 'Inspector' });
+
+  await resources.getByRole('button', { name: /Players/ }).click();
+  await expect(inspector.getByText('Provided by session · Read-only')).toBeVisible();
+  await expect(inspector.getByRole('button', { name: 'Delete resource' })).toHaveCount(0);
+
+  await resources.getByRole('button', { name: /Questions Deck/ }).click();
+  await expect(inspector.getByRole('region', { name: 'Questions Deck details' })).toBeVisible();
+  await expect(inspector.getByText('Draw Card', { exact: true })).toBeVisible();
+  await expect(inspector.getByText('Prepare Turn', { exact: true })).toBeVisible();
+
+  await resources.getByRole('button', { name: '＋ Resource' }).click();
+  const creator = resources.getByRole('form', { name: 'Create resource' });
+  await creator.getByLabel('Deck name').fill('Bonus Deck');
+  await creator.getByRole('button', { name: 'Create', exact: true }).click();
+  await expect(resources.getByRole('button', { name: /Bonus Deck/ })).toBeVisible();
+
+  await resources.getByRole('button', { name: /Score/ }).click();
+  await inspector.getByLabel('Initial value').fill('7');
+  await inspector.getByRole('button', { name: 'Save value' }).click();
+  await expect(resources.getByRole('button', { name: /Number · 7/ })).toBeVisible();
+
+  await flow.getByRole('button', { name: 'Insert before Draw Card in Main flow' }).click();
+  const palette = flow.getByRole('region', { name: 'Add step palette' });
+  await palette.getByRole('button', { name: /Draw Card/ }).click();
+  await expect(inspector.getByRole('heading', { name: 'Draw Card', exact: true })).toBeVisible();
+  await inspector.getByRole('button', { name: /From · Questions Deck/ }).click();
+  await inspector.getByRole('button', { name: /Bonus Deck.*Compatible/ }).click();
+  await expect(inspector.getByRole('button', { name: /From · Bonus Deck/ })).toBeVisible();
+
+  await flow.getByRole('button', { name: 'Insert before End in Main flow' }).click();
+  await palette.getByRole('button', { name: /For Each/ }).click();
+  const foreach = flow.locator('[id^="authoring-node-authoring-foreach-"]');
+  await expect(foreach.getByText('REPEAT FOR EACH PLAYER')).toBeVisible();
+  await foreach.getByRole('button', { name: 'Insert at end of For Each body' }).click();
+  await palette.getByRole('button', { name: /Present/ }).click();
+  await expect(
+    foreach.getByRole('button', { name: 'Present step, selected', exact: true }),
+  ).toBeVisible();
+
+  await flow.getByRole('button', { name: 'Choose Player step', exact: true }).click();
+  await inspector.getByRole('button', { name: 'Delete step' }).click();
+  await expect(flow.getByText('This draft needs attention')).toBeVisible();
+  await expect(flow.getByText(/Current Player is used by/).first()).toBeVisible();
+  await flow.getByRole('button', { name: 'Undo last edit' }).click();
+  await expect(flow.getByRole('button', { name: 'Choose Player step', exact: true })).toBeVisible();
+
+  await flow.getByRole('button', { name: 'Prepare Turn step', exact: true }).click();
+  await inspector.getByRole('button', { name: 'Open Composite' }).click();
+  await expect(flow.getByRole('heading', { name: 'Prepare Turn', exact: true })).toBeVisible();
+  await expect(flow.getByRole('button', { name: 'Present step', exact: true })).toBeVisible();
+  await flow.getByRole('button', { name: '← Back to parent' }).click();
+  await expect(flow.getByRole('heading', { name: 'Main flow', exact: true })).toBeVisible();
+});
+
+test('core authoring mobile uses exclusive resource, flow, reference, and Composite screens', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/lab/authoring');
+  const mobile = page.getByRole('region', { name: 'Core authoring mobile workspace' });
+
+  await mobile.getByRole('button', { name: 'Resources', exact: true }).click();
+  await mobile.getByRole('button', { name: /Questions Deck/ }).click();
+  await expect(mobile.getByRole('region', { name: 'Questions Deck details' })).toBeVisible();
+  await mobile.getByRole('button', { name: '← Back to Resources' }).click();
+  await mobile.getByRole('button', { name: 'Flow', exact: true }).click();
+
+  await mobile.getByRole('button', { name: 'Insert before Draw Card in Main flow' }).click();
+  await page
+    .getByRole('region', { name: 'Add step palette' })
+    .getByRole('button', { name: /Draw Card/ })
+    .click();
+  await expect(mobile.getByRole('heading', { name: 'Draw Card', exact: true })).toBeVisible();
+  await mobile.getByRole('button', { name: /From · Questions Deck/ }).click();
+  await expect(mobile.getByRole('region', { name: 'Choose Draw Card source' })).toBeVisible();
+  await mobile.getByRole('button', { name: /Challenges Deck.*Compatible/ }).click();
+  await expect(mobile.getByRole('button', { name: /From · Challenges Deck/ })).toBeVisible();
+  await mobile.getByRole('button', { name: '← Back to Flow' }).click();
+
+  await mobile.getByRole('button', { name: /Prepare Turn step/ }).click();
+  await mobile.getByRole('button', { name: 'Open Composite' }).click();
+  await expect(mobile.getByRole('heading', { name: 'Prepare Turn', exact: true })).toBeVisible();
+  await mobile.getByRole('button', { name: '← Back to parent flow' }).click();
+  await expect(mobile.getByRole('region', { name: 'Prepare Turn step details' })).toBeVisible();
+
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+    ),
+  ).toBe(true);
+  expect(await mobile.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+});
