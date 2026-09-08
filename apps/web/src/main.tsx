@@ -1,4 +1,4 @@
-import { lazy, StrictMode, Suspense, useMemo, useRef, useState } from 'react';
+import { StrictMode, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   appendBlock,
@@ -14,8 +14,6 @@ import { ReferenceLab } from './reference-lab.js';
 import { AuthoringLab } from './authoring-lab.js';
 import './styles.css';
 
-const FrameworkSpike = lazy(() => import('./framework-spike.js'));
-
 interface ApiEvent {
   readonly sequence: number;
   readonly kind: string;
@@ -26,12 +24,6 @@ function App() {
   if (window.location.pathname === '/lab/authoring') return <AuthoringLab />;
   if (window.location.pathname === '/lab/parallel') return <ParallelLab />;
   if (window.location.pathname === '/lab/references') return <ReferenceLab />;
-  if (window.location.pathname === '/lab/framework-spike')
-    return (
-      <Suspense fallback={<main className="lab">Loading framework spike…</main>}>
-        <FrameworkSpike />
-      </Suspense>
-    );
   return window.location.pathname === '/lab' ? <VisualLab /> : <Studio />;
 }
 
@@ -125,10 +117,14 @@ function Studio() {
     <main>
       <header className="topbar">
         <div>
-          <span className="eyebrow">FOUNDING BUILD · IR v1</span>
+          <span className="eyebrow">FOUNDATION · IR v1</span>
           <h1>Traquenard Studio</h1>
+          <small className="foundation-context">
+            Executable Studio and runtime proof—not the final editor.
+          </small>
         </div>
-        <nav>
+        <nav aria-label="Project navigation">
+          <a href="/lab/authoring">Current authoring lab</a>
           <a href="/lab">Visual Lab</a>
           <span className={`status status-${status}`}>{status}</span>
         </nav>
@@ -263,32 +259,40 @@ function VisualLab() {
     <main className="lab">
       <header className="topbar">
         <div>
-          <span className="eyebrow">PRESENTATION SANDBOX</span>
+          <span className="eyebrow">EXPERIMENT INDEX</span>
           <h1>Visual Lab</h1>
         </div>
         <a href="/">← Studio</a>
       </header>
-      <p>Components render predetermined runtime results; they never choose business outcomes.</p>
-      <a className="experiment-link" href="/lab/parallel">
-        <span className="eyebrow">AUTHORING EXPERIMENT · ISSUE #1</span>
-        <strong>Compare parallel execution grammars</strong>
-        <small>Lanes, fork/join, and grouped cards across four semantic fixtures →</small>
-      </a>
-      <a className="experiment-link" href="/lab/references">
-        <span className="eyebrow">AUTHORING EXPERIMENT · ISSUE #2</span>
-        <strong>Edit typed references through nested flows</strong>
-        <small>Direct reference chips, reversible navigation, and optional trace tools →</small>
-      </a>
-      <a className="experiment-link" href="/lab/authoring">
-        <span className="eyebrow">AUTHORING EXPERIMENT · ISSUE #6</span>
-        <strong>Build flows with game resources</strong>
-        <small>Resources, typed references, insertion, and nested structured editing →</small>
-      </a>
-      <a className="experiment-link" href="/lab/framework-spike">
-        <span className="eyebrow">TECHNICAL SPIKE · ISSUE #7</span>
-        <strong>Compare structured authoring frameworks</strong>
-        <small>Custom + dnd-kit/Base UI and Blockly over one semantic fixture →</small>
-      </a>
+      <p>
+        Test the active authoring work first. Supporting labs retain unresolved design evidence.
+      </p>
+      <section className="lab-experiment-group" aria-labelledby="active-authoring-heading">
+        <h2 id="active-authoring-heading">Active authoring work</h2>
+        <a className="experiment-link active" href="/lab/authoring">
+          <span className="eyebrow">CURRENT AUTHORING LAB · ISSUE #6</span>
+          <strong>Core authoring grammar and Resources ↔ Flow</strong>
+          <small>Resources, typed references, insertion, and nested structured editing →</small>
+        </a>
+      </section>
+      <section className="lab-experiment-group" aria-labelledby="supporting-evidence-heading">
+        <h2 id="supporting-evidence-heading">Supporting / unresolved evidence</h2>
+        <a className="experiment-link" href="/lab/parallel">
+          <span className="eyebrow">AUTHORING EXPERIMENT · ISSUE #1</span>
+          <strong>Compare parallel execution grammars</strong>
+          <small>Lanes, fork/join, and grouped cards across four semantic fixtures →</small>
+        </a>
+        <a className="experiment-link" href="/lab/references">
+          <span className="eyebrow">AUTHORING EXPERIMENT · ISSUE #2</span>
+          <strong>Edit typed references through nested flows</strong>
+          <small>Direct reference chips, reversible navigation, and optional trace tools →</small>
+        </a>
+      </section>
+      <p className="lab-history">
+        Issue #7 framework evidence is accepted and recorded in ADR 0005; its comparison lab is
+        retired.
+      </p>
+      <h2 className="lab-grid-heading">Runtime presentation proofs</h2>
       <section className="lab-grid">
         <article>
           <h2>Controlled die</h2>
