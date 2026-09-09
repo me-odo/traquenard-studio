@@ -1,16 +1,11 @@
 import {
-  literal,
-  t,
   variable,
   type Expression,
   type GameDefinition,
   type Operation,
 } from '@traquenard/game-ir';
-import {
-  createAuthoringWorkingDefinition,
-  insertOperation,
-  type InsertableKind,
-} from '../authoring-lab-model.js';
+import { createAuthoringWorkingDefinition } from './fixtures/authoring.js';
+import { createOperationForSlot, type InsertableOperationKind } from './registry/operations.js';
 
 export interface SemanticSlot {
   readonly sequenceId: string;
@@ -30,7 +25,7 @@ export function createLongBaselineDocument(): GameDefinition {
         sequenceId: 'authoring-root',
         index: definition.root.kind === 'sequence' ? definition.root.steps.length - 1 : 0,
       },
-      'wait',
+      'time.wait',
       `deep-wait-${index + 1}`,
     );
   }
@@ -54,10 +49,19 @@ export function sequenceById(
 export function insertAtSlot(
   definition: GameDefinition,
   slot: SemanticSlot,
-  kind: InsertableKind,
+  kind: InsertableOperationKind,
   id: string,
 ): GameDefinition {
-  return insertOperation(definition, slot.sequenceId, slot.index, kind, id);
+  const created = createOperationForSlot(definition, slot, kind, id);
+  const updated = mapDefinition(definition, (operation) => {
+    if (operation.kind !== 'sequence' || operation.id !== slot.sequenceId) return operation;
+    const safe = Math.max(0, Math.min(slot.index, operation.steps.length));
+    return {
+      ...operation,
+      steps: [...operation.steps.slice(0, safe), created.operation, ...operation.steps.slice(safe)],
+    };
+  });
+  return { ...updated, variables: created.variables };
 }
 
 export function moveToSlot(
@@ -109,30 +113,6 @@ export function setWaitDuration(
   );
 }
 
-export function setForeachItem(
-  definition: GameDefinition,
-  operationId: string,
-  itemVariable: string,
-): GameDefinition {
-  return updateOperation(definition, operationId, (operation) =>
-    operation.kind === 'control.foreach' && itemVariable.trim()
-      ? { ...operation, itemVariable: itemVariable.trim() }
-      : operation,
-  );
-}
-
-export function setIfRightLiteral(
-  definition: GameDefinition,
-  operationId: string,
-  value: string,
-): GameDefinition {
-  return updateOperation(definition, operationId, (operation) => {
-    if (operation.kind !== 'control.if' || operation.condition.kind !== 'equals') return operation;
-    const right: Expression = literal(value, t.string);
-    return { ...operation, condition: { ...operation.condition, right } };
-  });
-}
-
 export function setDrawCollection(
   definition: GameDefinition,
   operationId: string,
@@ -149,8 +129,8 @@ export function setPresentMessage(
   message: string,
 ): GameDefinition {
   return updateOperation(definition, operationId, (operation) =>
-    operation.kind === 'present'
-      ? { ...operation, message: literal(message, t.string) }
+    operation.kind === 'present' && operation.message.kind === 'literal'
+      ? { ...operation, message: { ...operation.message, value: message } }
       : operation,
   );
 }
@@ -234,7 +214,9 @@ export function resolveReferenceSource(
     );
     if (producer) return { kind: 'operation', id: producer, workflowId: workflow.id };
   }
-  return definition.variables.some((variable) => variable.name === variableName)
+  return definition.variables.some(
+    (variable) => variable.name === variableName && variable.initial !== undefined,
+  )
     ? { kind: 'resource', id: variableName }
     : undefined;
 }
@@ -253,10 +235,10 @@ export function expressionLabel(expression: Expression): string {
   return expression.kind;
 }
 
-export function operationSummary(operation: Operation): string {
+export function operationSummary(operation: Operation, definition?: GameDefinition): string {
   switch (operation.kind) {
     case 'random.select':
-      return `Players → ${operation.output}`;
+      return `From ${expressionLabel(operation.from)} · result ${displayName(operation.output)}`;
     case 'collection.draw':
       return `${operation.collectionVariable} → ${operation.output}`;
     case 'input.wait':
@@ -264,13 +246,13 @@ export function operationSummary(operation: Operation): string {
     case 'time.wait':
       return `${operation.durationMs / 1000} seconds`;
     case 'control.foreach':
-      return `Players · current item ${operation.itemVariable}`;
+      return `${expressionLabel(operation.collection)} · current item ${displayName(operation.itemVariable)}`;
     case 'control.if':
       return operation.condition.kind === 'equals'
         ? `${expressionLabel(operation.condition.left)} equals ${expressionLabel(operation.condition.right)}`
         : operation.condition.kind;
     case 'composite.invoke':
-      return `${operation.compositeId} · named Workflow`;
+      return `${definition?.composites.find((item) => item.id === operation.compositeId)?.name ?? displayName(operation.compositeId)} · reusable Workflow`;
     case 'present':
       return expressionLabel(operation.message);
     case 'control.parallel':
@@ -279,8 +261,10 @@ export function operationSummary(operation: Operation): string {
       return 'Complete game';
     case 'sequence':
       return `${operation.steps.length} steps`;
-    default:
-      return operation.kind;
+    case 'set':
+      return `${displayName(operation.variable)} = ${expressionLabel(operation.value)}`;
+    case 'collection.shuffle':
+      return `${expressionLabel(operation.collection)} · result ${displayName(operation.output)}`;
   }
 }
 

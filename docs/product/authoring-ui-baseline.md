@@ -20,17 +20,27 @@ CURRENT AUTHORING BASELINE
 
 The baseline descriptor, experiment manifests, shared editor, and Lab Harness live in `apps/web/src/authoring-ui`. `/` and every registered lab preview mount the same `AuthoringEditor`; the lab index is generated from the same registry. An active lab must not provide an independent top-level authoring shell.
 
+Current baseline identity: `traquenard-authoring-ui-2026-09-09-functional`.
+
+The frontend is organized by authoring concept: editor orchestration/topbar, Library sections, Flow sequence/operation/parallel projection, typed fields, Inspector variants, operation registry, review/navigation state, and fixtures. The former Issue #6/#1/#2 lab models were removed; compact fixture modules now supply experiment definitions only. Ordinary blocks, reference fields, Inspector behavior, and commands come from the baseline.
+
 ## Adopted global baseline
 
 - Traquenard owns the structured React renderer and all semantic authoring state.
 - dnd-kit owns bounded drag sensors, collision/drop lifecycle, overlays, reorder, and reparent mechanics. It emits Traquenard semantic slot commands; library state and coordinates are never canonical.
 - Base UI owns the accessible searchable add-step combobox and its popup/focus behavior.
 - Drag is an optional accelerator. Click/tap, search, keyboard, and explicit insertion slots remain first-class.
-- Typed compatibility and references come from Traquenard authoring and Game IR semantics, never visual proximity or color.
+- Every Game IR operation kind has an explicit authoring descriptor covering author label, category, insertion policy, renderer/Inspector policy, inputs, outputs, references, and structural behavior. Engine kind names remain unchanged.
+- Typed compatibility and references come from presentation-neutral `authoring-domain` scope calculations and Game IR types, never visual proximity or color. Reusable value, condition, audience, and Workflow-binding fields distinguish Runtime, Authored Data, flow outputs, Workflow inputs, and foreach-local bindings.
 - The desktop baseline has a sticky workspace bar, persistent Library and Inspector, and a Flow-only primary scroll surface. Panels may scroll internally.
-- The author-facing Library is organized as Blocks; Data with Runtime, Collections, and State; and named reusable Workflows.
+- The author-facing Library is organized as Blocks; Data with Runtime, Collections, State, and contextual flow-produced values; and named reusable Workflows. Only declarations with authored initial values are Data—uninitialized declarations produced by operations are not global State.
 - Named Workflows are Composite definitions at the same navigation depth as Data. THEN, ELSE, foreach, and permitted parallel bodies remain inline children of their structural parent.
 - Root and active labs share the shell, ordinary block renderer, structured blocks, reference chips, insertion slots, Library/Data/Workflows navigation, Inspector conventions, tokens, and focused mobile navigation.
+- Semantic edits run through named document/domain commands. The review surface supports insert, delete without silent repair, reorder/reparent, diagnostics, Undo, and Redo; invalid but structurally valid working definitions remain visible and recoverable.
+- Sequence boundaries use a compact circular `(+)` seam that expands on pointer/focus/drop. Empty bodies expose `Add first step`; phone keeps the same tap-accessible seam without hover dependency.
+- References are first-class selections carrying their owning operation, semantic path, expected type, current expression, and active Workflow context. Reference discovery covers set values, random sources, messages/audiences, participant input, IF operands, foreach/shuffle/draw sources, and Workflow arguments. Output identities remain read-only unless an atomic migration policy exists.
+- The root is presented as `ROOT WORKFLOW`, never as a stored Workflow named “Main”. Composite definitions remain named reusable Workflows; names are editable independently of stable IDs, implementations are navigable, invocation arguments use typed fields, and ports/target switching remain explicitly read-only in this pass.
+- Parallel envelopes retain the open projection axis, but every branch renders the same ordinary `OperationBlock` and uses the same Inspector/field policy as operations elsewhere.
 - Desktop and phone lab evaluation uses actual iframe viewports of 1280×800 and 390×844. Research controls and evidence remain on the host page, outside the preview.
 
 ## Review-session working copies

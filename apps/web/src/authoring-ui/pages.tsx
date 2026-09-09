@@ -1,8 +1,8 @@
-import { authoringCanonicalDefinition } from '../authoring-lab-model.js';
-import { fixtureByKey, type ParallelFixtureKey } from '../parallel-lab-model.js';
-import { referenceFixtures, type ReferenceFixtureKey } from '../reference-lab-model.js';
+import { authoringCanonicalDefinition } from './fixtures/authoring.js';
 import { AuthoringEditor } from './editor.js';
 import { createLongBaselineDocument } from './document.js';
+import { fixtureByKey, type ParallelFixtureKey } from './fixtures/parallel.js';
+import { referenceFixtures, type ReferenceFixtureKey } from './fixtures/references.js';
 import { LabHarness } from './lab-harness.js';
 import { rootAuthoringSurface } from './contracts.js';
 import { activeLabRegistry, labManifest, normalizedLabState } from './registry.js';

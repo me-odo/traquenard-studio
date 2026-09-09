@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { authoringDiagnostics } from '@traquenard/authoring-domain';
+import { validateDefinition } from '@traquenard/game-validator';
 import { CURRENT_AUTHORING_BASELINE_ID } from './baseline.js';
 import { activeAuthoringSurfaces, rootAuthoringSurface } from './contracts.js';
 import {
@@ -9,6 +11,9 @@ import {
   sequenceById,
   setWaitDuration,
 } from './document.js';
+import { parallelFixtures } from './fixtures/parallel.js';
+import { referenceFixtures } from './fixtures/references.js';
+import { createOperationForSlot, operationCatalog } from './registry/operations.js';
 import { activeLabRegistry, deviceProfiles, normalizedLabState } from './registry.js';
 
 describe('current authoring baseline contracts', () => {
@@ -48,6 +53,15 @@ describe('current authoring baseline contracts', () => {
     );
   });
 
+  it('keeps every shared realistic review fixture valid before author edits', () => {
+    const definitions = [
+      createBaselineDocument(),
+      ...parallelFixtures.map((item) => item.definition),
+      ...referenceFixtures.map((item) => item.definition),
+    ];
+    expect(definitions.every((definition) => validateDefinition(definition).valid)).toBe(true);
+  });
+
   it('normalizes and preserves device, fixture, and multiple experiment-specific URL fields', () => {
     const references = activeLabRegistry.find((manifest) => manifest.id === 'references')!;
     const state = normalizedLabState(
@@ -69,7 +83,7 @@ describe('current authoring baseline contracts', () => {
     const inserted = insertAtSlot(
       canonical,
       { sequenceId: 'authoring-root', index: 1 },
-      'wait',
+      'time.wait',
       'test-wait',
     );
     const reordered = moveToSlot(inserted, 'test-wait', { sequenceId: 'authoring-root', index: 0 });
@@ -81,13 +95,16 @@ describe('current authoring baseline contracts', () => {
       'test-wait',
     ]);
     expect(
+      moveToSlot(canonical, 'each-player', { sequenceId: 'each-player-body', index: 0 }),
+    ).toEqual(canonical);
+    expect(
       sequenceById(canonical, 'authoring-root')?.steps.some((step) => step.id === 'test-wait'),
     ).toBe(false);
 
     const nearEnd = insertAtSlot(
       canonical,
       { sequenceId: 'authoring-root', index: 7 },
-      'wait',
+      'time.wait',
       'near-end-wait',
     );
     const movedBefore = moveToSlot(nearEnd, 'near-end-wait', {
@@ -107,11 +124,26 @@ describe('current authoring baseline contracts', () => {
     ]);
   });
 
+  it('creates every insertable descriptor through the shared operation registry', () => {
+    const definition = createBaselineDocument();
+    const location = { sequenceId: 'authoring-root', index: 1 } as const;
+    for (const descriptor of operationCatalog) {
+      const created = createOperationForSlot(
+        definition,
+        location,
+        descriptor.kind as Exclude<typeof descriptor.kind, 'sequence'>,
+        `test-${descriptor.kind}`,
+      );
+      expect(created.operation.kind).toBe(descriptor.kind);
+    }
+    expect(authoringDiagnostics(definition)).toEqual([]);
+  });
+
   it('applies semantic insert, edit, and reorder commands inside a named Workflow', () => {
     const inserted = insertAtSlot(
       createBaselineDocument(),
       { sequenceId: 'prepare-sequence', index: 1 },
-      'wait',
+      'time.wait',
       'workflow-wait',
     );
     const edited = setWaitDuration(inserted, 'workflow-wait', 3);

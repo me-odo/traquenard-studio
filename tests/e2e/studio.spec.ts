@@ -1,6 +1,6 @@
 import { expect, test, type FrameLocator, type Locator, type Page } from '@playwright/test';
 
-const baselineId = 'traquenard-authoring-ui-2026-09-08';
+const baselineId = 'traquenard-authoring-ui-2026-09-09-functional';
 
 test('root is the current shared authoring baseline and runtime proof remains executable', async ({
   page,
@@ -98,7 +98,10 @@ test('review working copies are isolated by lab and fixture', async ({ page }) =
 
   await page.goto('/lab/parallel?device=desktop&fixture=mixed&projection=grouped');
   frame = preview(page);
-  await frame.getByRole('button', { name: /BRANCH 3.*Wait.*10 seconds/ }).click();
+  await frame
+    .getByRole('region', { name: 'Branch 3' })
+    .getByRole('button', { name: 'Wait step' })
+    .click();
   await expect(frame.getByLabel('Duration')).toHaveValue('10');
 
   await page.goto('/lab/references?device=desktop&fixture=current-player&navigation=on&traces=off');
@@ -225,16 +228,16 @@ test('desktop baseline keeps Library and Inspector visible while Flow scrolls an
 
   const foreach = flow.locator('#authoring-node-each-player');
   await expect(foreach).toHaveClass(/is-c-shape/);
-  await foreach.getByRole('button', { name: 'For Each Player step', exact: true }).click();
+  await foreach.getByRole('button', { name: 'For each step', exact: true }).click();
   await inspector.getByLabel('Current item').fill('Participant');
-  await expect(inspector.getByLabel('Current item')).toHaveValue('Participant');
+  await expect(inspector.getByLabel('Current item')).toHaveValue('participant');
 
   const condition = flow.locator('#authoring-node-answer-check');
   await condition.getByRole('button', { name: 'If step', exact: true }).click();
-  await inspector.getByLabel('Condition right').fill('Ready');
-  await expect(inspector.getByLabel('Condition right')).toHaveValue('Ready');
+  await inspector.getByLabel('Right operand literal').fill('Ready');
+  await expect(inspector.getByLabel('Right operand literal')).toHaveValue('Ready');
 
-  await library.getByRole('button', { name: /Questions Deck.*Collection/ }).click();
+  await library.getByRole('button', { name: /Questions Deck.*Authored collection/i }).click();
   await expect(inspector.getByRole('region', { name: 'Questions Deck details' })).toBeVisible();
   await inspector.getByLabel('Collection item 1').fill('Updated question');
   await expect(inspector.getByLabel('Collection item 1')).toHaveValue('Updated question');
@@ -242,14 +245,98 @@ test('desktop baseline keeps Library and Inspector visible while Flow scrolls an
   await expect(inspector.getByLabel('Collection item 4')).toHaveValue('New card');
   await flow
     .locator('#authoring-node-ask-question')
-    .getByRole('button', { name: 'Ask / Wait for Input step' })
+    .getByRole('button', { name: 'Ask for choice step' })
     .click();
   await inspector.getByLabel('Input prompt').fill('Choose now');
   await inspector.getByLabel('Input options').fill('Ready, Later');
   await expect(inspector.getByLabel('Input options')).toHaveValue('Ready, Later');
-  await library.getByRole('button', { name: /Prepare Turn.*Named reusable Workflow/ }).click();
+  await library.getByRole('button', { name: /Prepare Turn.*Reusable Workflow/ }).click();
   await inspector.getByRole('button', { name: 'Open Workflow' }).click();
   await expect(flow.getByRole('heading', { name: 'Prepare Turn' })).toBeVisible();
+});
+
+test('desktop supports typed authoring, diagnostics, Undo, Data, and Workflow bindings', async ({
+  page,
+}) => {
+  await page.goto('/');
+  const library = page.getByRole('complementary', { name: 'Library' });
+  const flow = page.getByRole('region', { name: 'Flow', exact: true });
+  const inspector = page.getByRole('complementary', { name: 'Inspector' });
+
+  await expect(library.getByRole('button', { name: /Score.*Authored Number/ })).toBeVisible();
+  await expect(library.getByRole('button', { name: /Current Player/ })).toHaveCount(0);
+  await expect(
+    library.locator('.authoring-ui-tree-static').filter({ hasText: 'Current Player' }),
+  ).toBeVisible();
+
+  await flow
+    .locator('#authoring-node-each-player')
+    .getByRole('button', { name: 'For each step' })
+    .click();
+  await inspector.getByLabel('Collection source').selectOption('featuredPlayers');
+  await expect(inspector.getByLabel('Collection source')).toHaveValue('featuredPlayers');
+  await inspector.getByLabel('Current item').fill('featuredParticipant');
+  await flow
+    .locator('#authoring-node-greet-player')
+    .getByRole('button', { name: /Audience reference Featured Participant/ })
+    .click();
+  await expect(inspector.getByRole('region', { name: 'Audience reference details' })).toBeVisible();
+
+  await flow
+    .locator('#authoring-node-choose-player')
+    .getByRole('button', { name: 'Pick random item step' })
+    .click();
+  await inspector.getByLabel('From source').selectOption('featuredPlayers');
+  await expect(inspector.getByLabel('From source')).toHaveValue('featuredPlayers');
+
+  await flow
+    .locator('#authoring-node-answer-check')
+    .getByRole('button', { name: 'If step' })
+    .click();
+  await inspector.getByLabel('Right operand literal').fill('Absolutely');
+  await expect(inspector.getByLabel('Right operand literal')).toHaveValue('Absolutely');
+
+  await flow
+    .locator('#authoring-node-present-correct')
+    .getByRole('button', { name: 'Show message step' })
+    .click();
+  await inspector.getByLabel('Message literal').fill('Welcome to the round');
+  await inspector.getByLabel('Audience kind').selectOption('host');
+  await expect(inspector.getByLabel('Audience kind')).toHaveValue('host');
+
+  await flow
+    .locator('#authoring-node-ask-question')
+    .getByRole('button', { name: 'Ask for choice step' })
+    .click();
+  await inspector.getByLabel('Participant source').selectOption('currentPlayer');
+  await inspector.getByLabel('Input options').fill('Yes, No, Yes');
+  await expect(inspector.getByLabel('Input options')).toHaveValue('Yes, No');
+
+  await inspector.getByRole('button', { name: 'Delete step' }).click();
+  await expect(inspector.getByRole('region', { name: 'Draft diagnostics' })).toContainText(
+    'Answer',
+  );
+  await page
+    .getByRole('navigation', { name: 'Workspace actions' })
+    .getByRole('button', { name: 'Undo' })
+    .click();
+  await expect(flow.locator('#authoring-node-ask-question')).toBeVisible();
+
+  await library.getByRole('button', { name: '+ New number' }).click();
+  await inspector.getByLabel('Initial value').fill('9');
+  await expect(inspector.getByLabel('Initial value')).toHaveValue('9');
+
+  await flow
+    .locator('#authoring-node-prepare-turn')
+    .getByRole('button', { name: 'Run workflow step' })
+    .click();
+  await inspector.getByLabel('Deck source').selectOption('challengesDeck');
+  await expect(inspector.getByLabel('Deck source')).toHaveValue('challengesDeck');
+  await inspector.getByRole('button', { name: /Deck.*Inspect typed reference/ }).click();
+  await inspector.getByRole('button', { name: 'Go to source' }).click();
+  await expect(inspector.getByRole('region', { name: 'Challenges Deck details' })).toBeVisible();
+  await inspector.getByRole('button', { name: '← Back to reference' }).click();
+  await expect(inspector.getByRole('region', { name: 'Deck reference details' })).toBeVisible();
 });
 
 test('quiet insertion supports explicit insertion and dnd-kit library insertion/reorder', async ({
@@ -258,7 +345,7 @@ test('quiet insertion supports explicit insertion and dnd-kit library insertion/
   await page.goto('/');
   const flow = page.getByRole('region', { name: 'Flow', exact: true });
   const slotButton = flow.getByRole('button', {
-    name: 'Insert before Draw Card in Authoring Root',
+    name: 'Insert before Draw item in Authoring Root',
   });
   await expect(slotButton).toHaveCSS('opacity', '0');
   await slotButton.focus();
@@ -266,23 +353,23 @@ test('quiet insertion supports explicit insertion and dnd-kit library insertion/
   await slotButton.click();
   await page
     .getByRole('dialog', { name: 'Add step palette' })
-    .getByRole('button', { name: /Present Show a public message/ })
+    .getByRole('button', { name: /Show message Show a message to an audience/ })
     .click();
   await expect(page.locator('#authoring-node-baseline-present-1')).toBeVisible();
 
   const libraryWait = page
     .getByRole('complementary', { name: 'Library' })
-    .locator('[data-palette-kind="wait"]');
+    .locator('[data-palette-kind="time.wait"]');
   const endSlot = flow.locator('[data-slot="slot:authoring-root:8"]');
   await dragWithPointer(page, libraryWait, endSlot);
-  await expect(page.locator('#authoring-node-baseline-wait-2')).toBeVisible();
+  await expect(page.locator('#authoring-node-baseline-time-wait-2')).toBeVisible();
   const insertedHandle = page
-    .locator('#authoring-node-baseline-wait-2')
+    .locator('#authoring-node-baseline-time-wait-2')
     .getByRole('button', { name: 'Drag Wait' });
   const earlierSlot = flow.locator('[data-slot="slot:authoring-root:7"]');
   await dragWithPointer(page, insertedHandle, earlierSlot);
   await expect(page.locator('.authoring-ui-status')).toContainText(
-    'Baseline Wait 2 moved to Authoring Root boundary 8.',
+    'Baseline Time Wait 2 moved to boundary 8.',
   );
   await expect
     .poll(async () =>
@@ -299,7 +386,7 @@ test('quiet insertion supports explicit insertion and dnd-kit library insertion/
       'authoring-node-answer-check',
       'authoring-node-each-player',
       'authoring-node-ready-together',
-      'authoring-node-baseline-wait-2',
+      'authoring-node-baseline-time-wait-2',
       'authoring-node-prepare-turn',
       'authoring-node-finish-game',
     ]);
@@ -312,8 +399,21 @@ test('phone preview uses focused Flow, Data, Workflows, Inspector, and non-drag 
   const frame = preview(page);
   await expect(frame.getByRole('navigation', { name: 'Mobile authoring sections' })).toBeVisible();
   await frame.getByRole('button', { name: 'Data', exact: true }).click();
-  await frame.getByRole('button', { name: /Questions Deck.*Collection/ }).click();
+  await frame.getByRole('button', { name: /Questions Deck.*Authored collection/i }).click();
   await expect(frame.getByRole('region', { name: 'Questions Deck details' })).toBeVisible();
+  await frame.getByRole('button', { name: '← Back to Flow' }).click();
+
+  await frame
+    .locator('#authoring-node-each-player')
+    .getByRole('button', { name: 'For each step' })
+    .click();
+  await frame.getByLabel('Collection source').selectOption('featuredPlayers');
+  await frame.getByRole('button', { name: '← Back to Flow' }).click();
+  await frame
+    .locator('#authoring-node-answer-check')
+    .getByRole('button', { name: 'If step' })
+    .click();
+  await frame.getByLabel('Right operand literal').fill('Maybe');
   await frame.getByRole('button', { name: '← Back to Flow' }).click();
 
   const wait = frame.locator('#authoring-node-wait-again');
@@ -321,26 +421,26 @@ test('phone preview uses focused Flow, Data, Workflows, Inspector, and non-drag 
   await wait.getByRole('button', { name: 'Wait step', exact: true }).click();
   await frame.getByLabel('Duration').fill('4');
   await frame.getByRole('button', { name: '← Back to Flow' }).click();
-  await frame.getByRole('button', { name: 'Insert before Draw Card in Authoring Root' }).click();
+  await frame.getByRole('button', { name: 'Insert before Draw item in Authoring Root' }).click();
   await frame
     .getByRole('dialog', { name: 'Add step palette' })
-    .getByRole('button', { name: /Wait Wait on logical time/ })
+    .getByRole('button', { name: /Wait Wait using logical time/ })
     .click();
-  await expect(frame.locator('#authoring-node-baseline-wait-1')).toBeAttached();
+  await expect(frame.locator('#authoring-node-baseline-time-wait-1')).toBeAttached();
   await frame.getByRole('button', { name: '← Back to Flow' }).click();
 
   await frame
     .locator('#authoring-node-draw-question')
-    .getByRole('button', { name: 'Draw Card step', exact: true })
+    .getByRole('button', { name: /Collection reference Questions Deck/ })
     .click();
   await frame.getByRole('button', { name: 'Go to source' }).click();
   await expect(frame.getByRole('region', { name: 'Questions Deck details' })).toBeVisible();
   await frame.getByRole('button', { name: '← Back to Flow' }).click();
   await frame.getByRole('button', { name: 'Workflows', exact: true }).click();
-  await frame.getByRole('button', { name: /Prepare Turn.*Named reusable Workflow/ }).click();
+  await frame.getByRole('button', { name: /Prepare Turn.*Reusable Workflow/ }).click();
   await frame.getByRole('button', { name: 'Open Workflow' }).click();
   await expect(frame.getByRole('heading', { name: 'Prepare Turn' })).toBeVisible();
-  await frame.getByRole('button', { name: '← Main' }).click();
+  await frame.getByRole('button', { name: '← Root workflow' }).click();
   expect(
     await frame.locator('html').evaluate((element) => element.scrollWidth <= element.clientWidth),
   ).toBe(true);
@@ -398,6 +498,16 @@ test('parallel lab changes only the registered parallel projection over baseline
   await expect(frame.getByRole('region', { name: 'Fork Join parallel projection' })).toBeVisible();
   await expect(frame.getByText('BRANCH 6')).toBeVisible();
   await expect(frame.locator('#authoring-node-stress-intro')).toHaveClass(/authoring-ui-block/);
+  await expect(frame.locator('#authoring-node-decision-window')).toHaveAttribute(
+    'data-shared-operation-block',
+    'true',
+  );
+  await frame
+    .locator('#authoring-node-decision-window')
+    .getByRole('button', { name: 'Wait step' })
+    .click();
+  await frame.getByLabel('Duration').fill('12');
+  await expect(frame.getByLabel('Duration')).toHaveValue('12');
 });
 
 test('reference lab independently configures semantic navigation and trace overlay on baseline blocks', async ({
@@ -412,16 +522,22 @@ test('reference lab independently configures semantic navigation and trace overl
   await expect(frame.getByRole('complementary', { name: 'Reference trace overlay' })).toBeVisible();
   await frame
     .locator('#authoring-node-draw-question')
-    .getByRole('button', { name: 'Draw Card step', exact: true })
+    .getByRole('button', { name: 'Draw item step', exact: true })
     .click();
+  await frame.getByRole('button', { name: /Collection reference Questions Deck/ }).click();
   await expect(
     frame.getByText('Semantic navigation is disabled in this experiment configuration.'),
   ).toBeVisible();
+  await frame.getByLabel('Change source').selectOption('challengesDeck');
+  await expect(frame.getByLabel('Change source')).toHaveValue('challengesDeck');
   await page.getByRole('button', { name: 'Semantic navigation On' }).click();
   await expect(page).toHaveURL(/navigation=on/);
   await preview(page)
     .locator('#authoring-node-draw-question')
-    .getByRole('button', { name: 'Draw Card step', exact: true })
+    .getByRole('button', { name: 'Draw item step', exact: true })
+    .click();
+  await preview(page)
+    .getByRole('button', { name: /Collection reference Challenges Deck/ })
     .click();
   await expect(preview(page).getByRole('button', { name: 'Go to source' })).toBeVisible();
 });
@@ -433,30 +549,34 @@ test('reference navigation reaches flow producers and Composite-bound sources wi
   let frame = preview(page);
   await frame
     .locator('#authoring-node-ask-current-player')
-    .getByRole('button', { name: 'Ask / Wait for Input step' })
+    .getByRole('button', { name: 'Ask for choice step' })
     .click();
+  await frame.getByRole('button', { name: /Participant reference Current Player/ }).click();
   await frame.getByRole('button', { name: 'Go to source' }).click();
-  await expect(frame.getByRole('region', { name: 'Choose Player properties' })).toBeVisible();
+  await expect(frame.getByRole('region', { name: 'Pick random item properties' })).toBeVisible();
   await frame.getByRole('button', { name: '← Back to reference' }).click();
-  await expect(
-    frame.getByRole('region', { name: 'Ask / Wait for Input properties' }),
-  ).toBeVisible();
+  await expect(frame.getByRole('region', { name: 'Participant reference details' })).toBeVisible();
 
   await page.goto('/lab/references?device=desktop&fixture=composite&navigation=on&traces=off');
   frame = preview(page);
   await frame
     .locator('#authoring-node-prepare-turn')
-    .getByRole('button', { name: 'Prepare Turn step' })
+    .getByRole('button', { name: 'Run workflow step' })
     .click();
   await frame.getByRole('button', { name: 'Open Workflow' }).click();
   await frame
     .locator('#authoring-node-prepare-draw')
-    .getByRole('button', { name: 'Draw Card step' })
+    .getByRole('button', { name: 'Draw item step' })
     .click();
+  await frame.getByRole('button', { name: /Collection reference Deck/ }).click();
   await frame.getByRole('button', { name: 'Go to source' }).click();
   await expect(frame.getByRole('region', { name: 'Questions Deck details' })).toBeVisible();
   await frame.getByRole('button', { name: '← Back to reference' }).click();
-  await expect(frame.getByRole('region', { name: 'Draw Card properties' })).toBeVisible();
+  await expect(frame.getByRole('region', { name: 'Collection reference details' })).toBeVisible();
+  await frame.getByRole('button', { name: '← Back to reference' }).click();
+  await expect(frame.getByRole('region', { name: 'Draw item properties' })).toBeVisible();
+  await frame.getByRole('button', { name: '← Back to reference' }).click();
+  await expect(frame.getByRole('region', { name: 'Run workflow properties' })).toBeVisible();
 });
 
 function preview(page: Page): FrameLocator {

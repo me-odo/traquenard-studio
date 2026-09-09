@@ -1,4 +1,5 @@
-export const CURRENT_AUTHORING_BASELINE_ID = 'traquenard-authoring-ui-2026-09-08' as const;
+export const CURRENT_AUTHORING_BASELINE_ID =
+  'traquenard-authoring-ui-2026-09-09-functional' as const;
 
 export const currentAuthoringBaseline = {
   id: CURRENT_AUTHORING_BASELINE_ID,
@@ -9,6 +10,9 @@ export const currentAuthoringBaseline = {
     'Library / Flow / Inspector shell',
     'Data and named Workflow navigation',
     'Typed local reference chips',
+    'Scope-aware typed fields and semantic commands',
+    'Diagnostics with Undo and Redo',
+    'Shared operation descriptors and branch blocks',
   ],
 } as const;
 
