@@ -315,7 +315,7 @@ function compileBlock(block: DraftBlock): Operation {
 
 export type { CompositeDefinition };
 
-export * from './authoring.js';
+export * from './authoring/index.js';
 
 function showType(type: TypeRef): string {
   return type.kind === 'collection' ? `Collection<${showType(type.element)}>` : type.kind;

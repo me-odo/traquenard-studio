@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { runSourceShapeCheck } from './source-shape-check.mjs';
 
 const roots = [
   'packages/game-ir',
@@ -66,15 +67,24 @@ for (const trustedKind of ['time.advance', 'participant.disconnected', 'particip
 const authoring = readFileSync('packages/authoring-domain/src/index.ts', 'utf8');
 if (!authoring.includes('type TypeRef') || !authoring.includes('sameType('))
   failures.push('authoring compatibility must derive from Game IR TypeRef semantics');
+for (const file of walk('apps/web/src')) {
+  const source = readFileSync(file, 'utf8');
+  if (
+    source.includes("from '@traquenard/authoring-domain/") ||
+    source.includes('from "@traquenard/authoring-domain/')
+  )
+    failures.push(`${relative('.', file)} bypasses the authoring-domain public API`);
+}
 if (failures.length) {
   console.error(failures.join('\n'));
   process.exit(1);
 }
+if (!runSourceShapeCheck()) process.exit(1);
 console.log('Architecture dependency and engine-purity checks passed.');
 
 function walk(directory) {
   return readdirSync(directory).flatMap((name) => {
     const path = join(directory, name);
-    return statSync(path).isDirectory() ? walk(path) : path.endsWith('.ts') ? [path] : [];
+    return statSync(path).isDirectory() ? walk(path) : /\.tsx?$/.test(path) ? [path] : [];
   });
 }

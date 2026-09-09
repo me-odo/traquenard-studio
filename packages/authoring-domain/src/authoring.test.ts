@@ -17,6 +17,7 @@ import {
   changeForeachCollection,
   changeInputParticipant,
   changeRandomSelectSource,
+  changeReferenceExpression,
   changeWorkflowArgument,
   collectionCandidatesForOperation,
   createAuthoredData,
@@ -239,6 +240,14 @@ describe('semantic authoring model', () => {
         (item) => item.path === 'output',
       ),
     ).toBe(false);
+  });
+
+  it('routes reference edits through a presentation-neutral semantic command', () => {
+    const definition = fixture();
+    const operation = findOperation(definition, 'pick')!;
+    const changed = changeReferenceExpression(definition, operation, 'from', variable('cards'));
+    expect(findOperation(changed, 'pick')).toMatchObject({ from: variable('cards') });
+    expect(changed.variables.find((item) => item.name === 'selected')?.type).toEqual(t.card);
   });
 
   it('extracts references from every supported semantic input field', () => {

@@ -8,6 +8,8 @@ Use a local-first loop: run targeted local tests while implementing, then a comp
 
 Use `pnpm fix` for deterministic formatting and safe lint fixes. Fix lint and type errors at their source rather than suppressing them; use targeted checks while implementing and keep `pnpm verify` as the final local gate.
 
+Source-size budgets are architecture guardrails, not formatting targets. Review modules above the soft budget for multiple reasons to change, split by durable ownership, and use only explicit reviewed central exceptions for the hard limit; never game the guard with packing, exclusions, wrappers, or catch-all helper/registry modules.
+
 Architecture starts at `ARCHITECTURE.md`. Durable decisions live in `docs/adr`; unfinished work belongs in GitHub Issues, never local backlog files. Before creating an issue, follow `skills/github-issue-triage/SKILL.md` and search open and closed issues using several concepts. Before closing an experiment or technical spike, follow `skills/experiment-closure/SKILL.md`.
 
 Reusable version-controlled skill sources live under `skills/`. Install them with `pnpm skills:install` because this environment reserves `.agents`; more specific nested `AGENTS.md` files override this map for their directory.
